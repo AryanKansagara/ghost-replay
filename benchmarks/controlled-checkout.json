@@ -1,0 +1,268 @@
+{
+  "before": {
+    "schema_version": 1,
+    "experiment_id": "f14af70bef9be238",
+    "fixture": {
+      "stock": 1,
+      "provenance": "fixture"
+    },
+    "mode": "buggy",
+    "schedule": {
+      "steps": [
+        "noise:open-catalog",
+        "A:read",
+        "B:read",
+        "noise:view-help",
+        "A:commit",
+        "B:commit"
+      ],
+      "provenance": "hypothesis",
+      "source": "operator-controlled schedule"
+    },
+    "transport": "real loopback HTTP",
+    "events": [
+      {
+        "sequence": 0,
+        "operation": "noise:open-catalog",
+        "provenance": "observed",
+        "source": "local-http-checkout",
+        "effect": "none"
+      },
+      {
+        "sequence": 1,
+        "operation": "A:read",
+        "provenance": "observed",
+        "source": "local-http-checkout",
+        "inventory": 1
+      },
+      {
+        "sequence": 2,
+        "operation": "B:read",
+        "provenance": "observed",
+        "source": "local-http-checkout",
+        "inventory": 1
+      },
+      {
+        "sequence": 3,
+        "operation": "noise:view-help",
+        "provenance": "observed",
+        "source": "local-http-checkout",
+        "effect": "none"
+      },
+      {
+        "sequence": 4,
+        "operation": "A:commit",
+        "provenance": "observed",
+        "source": "local-http-checkout",
+        "accepted": true,
+        "inventory_before": 1,
+        "inventory_after": 0
+      },
+      {
+        "sequence": 5,
+        "operation": "B:commit",
+        "provenance": "observed",
+        "source": "local-http-checkout",
+        "accepted": true,
+        "inventory_before": 0,
+        "inventory_after": -1
+      }
+    ],
+    "responses": {
+      "A": {
+        "accepted": true,
+        "inventory_before": 1,
+        "inventory_after": 0
+      },
+      "B": {
+        "accepted": true,
+        "inventory_before": 0,
+        "inventory_after": -1
+      }
+    },
+    "result": {
+      "provenance": "derived",
+      "accepted": 2,
+      "final_inventory": -1,
+      "invariant_violated": true,
+      "complete": true
+    }
+  },
+  "minimization": {
+    "original_steps": 6,
+    "minimal_steps": 4,
+    "schedule": [
+      "A:read",
+      "B:read",
+      "A:commit",
+      "B:commit"
+    ],
+    "trials": 2,
+    "minimality": "one-step-minimal among valid fixture schedules; not globally minimal"
+  },
+  "after": {
+    "schema_version": 1,
+    "experiment_id": "e140f3b533aca1d9",
+    "fixture": {
+      "stock": 1,
+      "provenance": "fixture"
+    },
+    "mode": "fixed",
+    "schedule": {
+      "steps": [
+        "noise:open-catalog",
+        "A:read",
+        "B:read",
+        "noise:view-help",
+        "A:commit",
+        "B:commit"
+      ],
+      "provenance": "hypothesis",
+      "source": "operator-controlled schedule"
+    },
+    "transport": "real loopback HTTP",
+    "events": [
+      {
+        "sequence": 0,
+        "operation": "noise:open-catalog",
+        "provenance": "observed",
+        "source": "local-http-checkout",
+        "effect": "none"
+      },
+      {
+        "sequence": 1,
+        "operation": "A:read",
+        "provenance": "observed",
+        "source": "local-http-checkout",
+        "inventory": 1
+      },
+      {
+        "sequence": 2,
+        "operation": "B:read",
+        "provenance": "observed",
+        "source": "local-http-checkout",
+        "inventory": 1
+      },
+      {
+        "sequence": 3,
+        "operation": "noise:view-help",
+        "provenance": "observed",
+        "source": "local-http-checkout",
+        "effect": "none"
+      },
+      {
+        "sequence": 4,
+        "operation": "A:commit",
+        "provenance": "observed",
+        "source": "local-http-checkout",
+        "accepted": true,
+        "inventory_before": 1,
+        "inventory_after": 0
+      },
+      {
+        "sequence": 5,
+        "operation": "B:commit",
+        "provenance": "observed",
+        "source": "local-http-checkout",
+        "accepted": false,
+        "inventory_before": 0,
+        "inventory_after": 0
+      }
+    ],
+    "responses": {
+      "A": {
+        "accepted": true,
+        "inventory_before": 1,
+        "inventory_after": 0
+      },
+      "B": {
+        "accepted": false,
+        "inventory_before": 0,
+        "inventory_after": 0
+      }
+    },
+    "result": {
+      "provenance": "derived",
+      "accepted": 1,
+      "final_inventory": 0,
+      "invariant_violated": false,
+      "complete": true
+    }
+  },
+  "verification": {
+    "schema_version": 1,
+    "schedule_count": 6,
+    "repeats": 20,
+    "total_runs": 240,
+    "rows": [
+      {
+        "schedule": [
+          "A:read",
+          "A:commit",
+          "B:read",
+          "B:commit"
+        ],
+        "repeats": 20,
+        "buggy_violations": 0,
+        "fixed_violations": 0
+      },
+      {
+        "schedule": [
+          "A:read",
+          "B:read",
+          "A:commit",
+          "B:commit"
+        ],
+        "repeats": 20,
+        "buggy_violations": 20,
+        "fixed_violations": 0
+      },
+      {
+        "schedule": [
+          "A:read",
+          "B:read",
+          "B:commit",
+          "A:commit"
+        ],
+        "repeats": 20,
+        "buggy_violations": 20,
+        "fixed_violations": 0
+      },
+      {
+        "schedule": [
+          "B:read",
+          "A:read",
+          "A:commit",
+          "B:commit"
+        ],
+        "repeats": 20,
+        "buggy_violations": 20,
+        "fixed_violations": 0
+      },
+      {
+        "schedule": [
+          "B:read",
+          "A:read",
+          "B:commit",
+          "A:commit"
+        ],
+        "repeats": 20,
+        "buggy_violations": 20,
+        "fixed_violations": 0
+      },
+      {
+        "schedule": [
+          "B:read",
+          "B:commit",
+          "A:read",
+          "A:commit"
+        ],
+        "repeats": 20,
+        "buggy_violations": 0,
+        "fixed_violations": 0
+      }
+    ],
+    "fixed_violations": 0,
+    "claim": "bounded fixture schedule coverage; not proof of general concurrency correctness"
+  }
+}
