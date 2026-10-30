@@ -1,0 +1,5 @@
+{
+  "schema_version": 1,
+  "stock": 1,
+  "schedule": ["noise:open-catalog", "A:read", "B:read", "noise:view-help", "A:commit", "B:commit"]
+}
