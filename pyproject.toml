@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ghost-replay"
+version = "0.1.0"
+description = "Controlled HTTP checkout race reproduction and patch verification"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+ghost-replay = "ghost_replay.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["ghost_replay*"]
