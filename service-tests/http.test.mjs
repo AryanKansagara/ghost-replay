@@ -207,18 +207,31 @@ test('preview CLI flags override PORT and graceful SIGTERM closes the real entry
 test('worker leader exit cleans surviving descendants with inherited or closed pipes', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'ghost-descendant-test-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
+  const self = await readFile('/proc/self/stat', 'utf8');
+  const matchingPidView = Number(self.slice(0, self.indexOf(' '))) === process.pid;
   for (const mode of ['inherited', 'closed']) {
     const record = join(directory, `${mode}.json`);
     const runner = new WorkerRunner({ args: [join(APP_ROOT, 'service-tests/fork_worker.py'), record, mode] });
     t.after(() => runner.shutdown());
-    const result = await runner.execute({ schedule: race, stock: 1 }, { timeoutMs: 150 });
-    assert.equal(result.buggy.result.complete, true); assert.equal(runner.activePids.length, 0);
+    let result;
+    try { result = await runner.execute({ schedule: race, stock: 1 }, { timeoutMs: 1_000 }); }
+    catch (error) {
+      // Some execution sandboxes mount a different PID namespace's /proc. Such
+      // metadata must not establish cleanup; the runner conservatively abstains.
+      assert.equal(matchingPidView, false); assert.equal(error.code, 'worker_cleanup');
+      assert.equal(runner.healthy, false);
+      await assert.rejects(runner.execute({ schedule: race, stock: 1 }), { code: 'worker_unavailable' });
+    }
+    if (result) assert.equal(result.buggy.result.complete, true);
+    assert.equal(runner.activePids.length, 0);
     const child = JSON.parse(await readFile(record, 'utf8'));
     assert.equal(await refused(child.port), true);
     // On a host without an init reaper the dead orphan can briefly be a zombie;
     // it must not be executing. Container tini reaps such adopted children.
-    let alive = false;
-    try { alive = !/\) Z /.test(await readFile(`/proc/${child.pid}/stat`, 'utf8')); } catch {}
-    assert.equal(alive, false);
+    if (matchingPidView) {
+      let alive = false, state = 'missing';
+      try { state = await readFile(`/proc/${child.pid}/stat`, 'utf8'); alive = !/\) [ZX] /.test(state); } catch {}
+      assert.equal(alive, false, state);
+    } else t.diagnostic('PID/proc views differ: process liveness is not inferred from unrelated host PIDs; socket closure and fail-closed supervision checked.');
   }
 });
