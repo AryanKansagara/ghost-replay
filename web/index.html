@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#101215">
+  <title>Ghost Replay · Incident laboratory</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to experiment</a>
+<div class="app-shell">
+  <aside class="rail" aria-label="Laboratory identity">
+    <a class="brand-mark" href="/" aria-label="Ghost Replay home"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M7 27V13a9 9 0 0 1 18 0v14l-4-3-5 3-5-3-4 3Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="12.5" cy="13" r="1.5" fill="currentColor"/><circle cx="19.5" cy="13" r="1.5" fill="currentColor"/></svg></a>
+    <div class="rail-divider"></div>
+    <div class="rail-active" title="Incident laboratory"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Zm0 0v9m8-4.5L12 12l-8-4.5M12 12v9"/></svg><span class="sr-only">Incident laboratory</span></div>
+    <span class="rail-bottom" aria-hidden="true">GR</span>
+  </aside>
+  <div class="workspace">
+    <header class="topbar">
+      <a class="wordmark" href="/">ghost<span>replay</span><span class="wordmark-dot">.</span></a>
+      <span class="topbar-divider"></span><span class="breadcrumb">Laboratory <span>/</span> <strong>Checkout race</strong></span>
+      <span class="environment"><span class="environment-dot"></span>LOCAL HTTP LAB</span>
+    </header>
+    <main id="main">
+      <div class="page-heading">
+        <div><div class="eyebrow"><span class="tiny-square"></span>INCIDENT REPRODUCTION</div><h1>Make the race <span>visible.</span></h1><p>One interleaving. Two handlers. Evidence you can inspect.</p></div>
+        <div class="heading-note"><span class="heading-note-line"></span><span>CONTROL THE ORDER.<br>COMPARE THE OUTCOME.</span></div>
+      </div>
+      <p class="scope-note"><svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="M10 9v5m0-8v.5"/></svg>This controlled checkout fixture runs real local HTTP requests; it does not replay production incidents or connect to Sentry.</p>
+
+      <section class="panel experiment-panel" aria-labelledby="experiment-heading">
+        <div class="section-heading"><div class="section-title"><span class="section-number">01</span><h2 id="experiment-heading">Configure the experiment</h2></div><span class="subtle-label">TWO CONCURRENT REQUESTS · A + B</span></div>
+        <div class="experiment-body">
+          <div class="schedule-config">
+            <fieldset id="preset-fieldset"><legend>Request interleaving <span>Choose the order of reads and commits</span></legend><div class="preset-grid" id="preset-grid"></div></fieldset>
+            <div class="schedule-preview"><span class="subtle-label">SCHEDULE</span><div id="schedule-preview" class="schedule-chips" aria-label="Selected schedule"></div></div>
+          </div>
+          <div class="run-config">
+            <label class="field-label" for="stock">Initial inventory <span>units available</span></label>
+            <div class="inventory-input"><select id="stock" aria-describedby="inventory-help"><option value="0">0</option><option value="1" selected>1</option><option value="2">2</option><option value="3">3</option></select><span>units</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 6 4 4 4-4"/></svg></div>
+            <p class="field-help" id="inventory-help">Try one unit to expose competing checkouts.</p>
+            <label class="noise-control"><input id="include-noise" type="checkbox" checked><span class="checkbox-visual" aria-hidden="true"></span><span>Include unrelated activity<small>Add two no-effect steps for minimization.</small></span></label>
+            <button class="run-button" id="run-button" type="button"><svg class="play-icon" viewBox="0 0 20 20" aria-hidden="true"><path d="m7 4 9 6-9 6V4Z" fill="currentColor"/></svg><span id="run-button-label">Run comparison</span><span class="keycap" aria-hidden="true">↵</span></button>
+            <p class="run-footnote">Runs both handlers against the same inputs.</p>
+          </div>
+        </div>
+      </section>
+
+      <div id="error-box" class="error-box" role="alert" hidden><span class="error-symbol" aria-hidden="true">!</span><div><strong>Experiment could not complete</strong><p id="error-message"></p></div></div>
+      <div class="results-heading"><div class="section-title"><span class="section-number">02</span><h2>Inspect the evidence</h2></div><div class="run-status" id="run-status" role="status" aria-live="polite"><span class="status-dot"></span><span id="status-text">Awaiting first run</span></div></div>
+      <div class="metrics-grid" aria-label="Comparison summary" id="metrics-grid" aria-busy="false">
+        <section class="metric-card"><div class="metric-top"><h3>Accepted checkouts</h3><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 4h2l2 8h7l2-6H7m2 10h.01M15 16h.01"/></svg></div><div class="metric-values"><div><span class="metric-value vulnerable-value" id="buggy-accepted">—</span><span class="metric-mode">Vulnerable</span></div><span class="metric-versus">/</span><div><span class="metric-value" id="fixed-accepted">—</span><span class="metric-mode">Fixed</span></div></div><p id="accepted-note">Observed from checkout responses</p></section>
+        <section class="metric-card"><div class="metric-top"><h3>Remaining inventory</h3><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m10 2 7 4v8l-7 4-7-4V6l7-4Zm0 8v8M3 6l7 4 7-4"/></svg></div><div class="metric-values"><div><span class="metric-value vulnerable-value" id="buggy-inventory">—</span><span class="metric-mode">Vulnerable</span></div><span class="metric-versus">/</span><div><span class="metric-value" id="fixed-inventory">—</span><span class="metric-mode">Fixed</span></div></div><p id="inventory-note">Final stock after both requests</p></section>
+        <section class="metric-card invariant-card"><div class="metric-top"><h3>Inventory invariant</h3><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m10 2 6 2v5c0 4-3 7-6 9-3-2-6-5-6-9V4l6-2Zm-3 8 2 2 4-4"/></svg></div><div class="invariant-lines"><div><span class="metric-mode">Vulnerable</span><span id="buggy-invariant" class="outcome neutral">Not run</span></div><div><span class="metric-mode">Fixed</span><span id="fixed-invariant" class="outcome neutral">Not run</span></div></div><p>Stock ≥ 0 &amp; accepted ≤ initial stock</p></section>
+      </div>
+
+      <div class="trace-grid" id="trace-grid" aria-busy="false">
+        <section class="panel trace-panel vulnerable-panel" aria-labelledby="vulnerable-heading"><div class="trace-heading"><div><span class="mode-symbol vulnerable-symbol" aria-hidden="true">−</span><h3 id="vulnerable-heading">Vulnerable handler</h3></div><span class="trace-badge" id="buggy-trace-badge">SNAPSHOT CHECK</span></div><div class="handler-code"><code>eligible = snapshot &gt;= 1</code><span>Read, then authorize, then write</span></div><div class="trace-content" id="buggy-trace"><div class="trace-empty"><span class="empty-icon" aria-hidden="true">⌁</span><strong>No observations yet</strong><p>Run an interleaving to capture each<br>inventory read and checkout commit.</p></div></div><div class="trace-footer"><span class="mini-dot"></span><span>Evidence comes from the local HTTP fixture</span></div></section>
+        <section class="panel trace-panel fixed-panel" aria-labelledby="fixed-heading"><div class="trace-heading"><div><span class="mode-symbol fixed-symbol" aria-hidden="true">+</span><h3 id="fixed-heading">Fixed handler</h3></div><span class="trace-badge" id="fixed-trace-badge">COMMIT-TIME CHECK</span></div><div class="handler-code"><code>eligible = inventory_before &gt;= 1</code><span>Check current inventory at commit</span></div><div class="trace-content" id="fixed-trace"><div class="trace-empty"><span class="empty-icon" aria-hidden="true">⌁</span><strong>A matching comparison</strong><p>The fixed handler will use the same<br>schedule and starting inventory.</p></div></div><div class="trace-footer"><span class="mini-dot"></span><span>Evidence comes from the local HTTP fixture</span></div></section>
+      </div>
+
+      <section class="panel witness-panel" aria-labelledby="witness-heading"><div class="witness-intro"><div class="section-title"><span class="section-number">03</span><h2 id="witness-heading">A smaller witness</h2></div><p>Strip unrelated activity.<br>Keep the failure that matters.</p><span class="witness-tag">GREEDY VALID-SCHEDULE REDUCTION</span></div><div class="witness-result" id="witness-result"><span class="witness-empty-label">WAITING FOR A REPRODUCED VIOLATION</span><p>A failing run unlocks a reduced schedule and its measured reduction.</p></div></section>
+      <section class="export-bar" aria-label="Export experiment"><div class="run-reference"><span class="subtle-label">RUN REFERENCE</span><code id="run-reference">No experiment recorded</code><span id="duration-label"></span></div><div class="export-actions"><button class="secondary-button" type="button" id="copy-cli" disabled><svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 6 4 4-4 4m6 0h5"/></svg><span>Copy repro CLI</span></button><button class="secondary-button" type="button" id="download-json" disabled><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v10m-4-4 4 4 4-4M4 14v3h12v-3"/></svg>Download JSON</button></div></section>
+      <p id="export-status" class="export-status" role="status" aria-live="polite"></p>
+      <details class="cli-details" id="cli-details" hidden>
+        <summary>Inspect reproduction commands <span>MANUAL COPY AVAILABLE</span></summary>
+        <div class="cli-details-body"><label for="repro-commands">Commands for this completed experiment</label><p id="cli-help">Run these commands from the Ghost Replay repository. If clipboard access is unavailable, select the commands and copy them with Ctrl/Cmd+C.</p><textarea id="repro-commands" readonly spellcheck="false" rows="11" aria-describedby="cli-help"></textarea></div>
+      </details>
+      <footer class="page-footer"><span><span class="footer-cross" aria-hidden="true">+</span> Deterministic schedule. Observed execution.</span><span>GHOST REPLAY <span class="footer-slash">/</span> CONTROLLED CHECKOUT LAB</span></footer>
+    </main>
+  </div>
+</div>
+</body>
+</html>
