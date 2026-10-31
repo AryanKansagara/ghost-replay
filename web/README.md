@@ -7,7 +7,7 @@ The server must serve `index.html`, `styles.css`, `app.js`, and `helpers.mjs` fr
 Run pure helper tests from the repository root:
 
 ```sh
-node --test web/helpers.test.mjs
+node --test web/*.test.mjs
 ```
 
 Seven tests exercise all six schedules at each offered inventory value with/without noise; malformed input and restricted shell text; safe quoted-heredoc CLI recipes; zero/negative/rejected event presentation; report/input binding; witness reductions; and safe text error messages. These are helper tests, not a claim of browser accessibility certification.
@@ -22,3 +22,12 @@ Browser QA against the actual server:
 6. Stop the local backend or inspect an endpoint error: a visible error explains the incomplete run, no result is fabricated, controls re-enable, and exports remain disabled. HTTP 429/503 retry guidance is shown when the response supplies it.
 
 All dynamic strings render with `textContent`/text nodes. No external fonts, images, packages, or remote scripts load. The UI declares the controlled local fixture scope prominently. Native radios, checkbox, select, buttons, semantic sections, ordered event lists, focus-visible styles, reduced-motion support, and a skip link provide an accessible baseline; actual assistive-technology validation remains future work.
+
+
+## Appearance
+
+The header's Light/Dark button switches the effective color theme and persists that explicit choice in the browser under `ghost-replay-theme`. **Auto** clears the override and follows the operating system, including live system changes. With no saved choice, system appearance is the default; CSS also supplies system-light colors before the module starts. Invalid saved values fall back to the system. Storage failures keep the control functional for the current page and announce that the choice could not be saved. Other tabs' changes refresh the preference.
+
+The controls remain enabled during an experiment and never clear or rerun its observations. Native buttons have visible focus states, action labels, an announced appearance description, and an Auto pressed state. Both palettes cover empty, loading, observed, failure, disabled, and CLI states. All initialization and updates use the existing external modules and data attributes; no inline script/style or additional server route is required.
+
+Seven additional appearance tests cover system defaults and corrupt preferences, persistent toggles/reload, Auto reset and live system changes, unavailable storage, cross-tab refresh, normal-text contrast of the main/status/action color roles, and CSP-safe controls. The frontend test total is **14**. These automated palette checks do not certify every pixel or assistive technology; browser QA should also inspect both palettes with a completed run and the manual CLI disclosure at narrow widths.

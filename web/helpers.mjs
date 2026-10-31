@@ -96,3 +96,32 @@ export function errorMessage(body, status, retryAfter) {
   const retry = /^\d{1,3}$/.test(retryAfter ?? '') ? ` Try again after ${Number(retryAfter)} seconds.` : '';
   return (detail || defaults[status] || `The local engine returned HTTP ${status}.`) + retry;
 }
+
+
+/** Preference state is independent of the DOM and survives unavailable browser storage. */
+export function resolveTheme(preference, systemDark) {
+  return preference === 'light' || preference === 'dark' ? preference : systemDark ? 'dark' : 'light';
+}
+export function createThemeController({ readPreference, writePreference, systemDark, apply }) {
+  let preference = null, storageAvailable = true;
+  function load() {
+    try { const value = readPreference(); preference = value === 'light' || value === 'dark' ? value : null; storageAvailable = true; }
+    catch { preference = null; storageAvailable = false; }
+  }
+  function render() {
+    const state = { theme: resolveTheme(preference, systemDark()), preference, storageAvailable };
+    apply(state); return state;
+  }
+  function choose(value) {
+    preference = value;
+    try { writePreference(value); storageAvailable = true; } catch { storageAvailable = false; }
+    return render();
+  }
+  load(); render();
+  return {
+    toggle() { return choose(resolveTheme(preference, systemDark()) === 'dark' ? 'light' : 'dark'); },
+    useSystem() { return choose(null); },
+    systemChanged() { return render(); },
+    refresh() { load(); return render(); },
+  };
+}

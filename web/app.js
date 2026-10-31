@@ -1,6 +1,26 @@
-import { PRESETS, buildInput, shortStep, validateReport, eventPresentation, reproCLI, errorMessage } from '/helpers.mjs';
+import { PRESETS, buildInput, shortStep, validateReport, eventPresentation, reproCLI, errorMessage, createThemeController } from '/helpers.mjs';
 
 const $ = id => document.getElementById(id);
+const themeKey = 'ghost-replay-theme';
+const colorPreference = window.matchMedia('(prefers-color-scheme: dark)');
+const themes = createThemeController({
+  readPreference: () => window.localStorage.getItem(themeKey),
+  writePreference: value => value === null ? window.localStorage.removeItem(themeKey) : window.localStorage.setItem(themeKey, value),
+  systemDark: () => colorPreference.matches,
+  apply: ({ theme, preference, storageAvailable }) => {
+    document.documentElement.dataset.theme = theme;
+    $('theme-label').textContent = theme === 'dark' ? 'Dark' : 'Light';
+    $('theme-toggle').setAttribute('aria-label', `Switch to ${theme === 'dark' ? 'light' : 'dark'} theme`);
+    $('theme-toggle').title = `Current appearance: ${theme}${preference === null ? ' (system)' : ''}`;
+    $('theme-system').setAttribute('aria-pressed', String(preference === null));
+    $('theme-status').textContent = `${theme === 'dark' ? 'Dark' : 'Light'} theme. ${preference === null ? 'Following system appearance.' : 'User preference selected.'}${storageAvailable ? '' : ' Browser storage is unavailable; this choice applies to this page only.'}`;
+    document.querySelector('meta[name="theme-color"]').setAttribute('content', theme === 'dark' ? '#101215' : '#f5f6f3');
+  },
+});
+$('theme-toggle').addEventListener('click', () => themes.toggle());
+$('theme-system').addEventListener('click', () => themes.useSystem());
+colorPreference.addEventListener('change', () => themes.systemChanged());
+window.addEventListener('storage', event => { if (event.key === themeKey || event.key === null) themes.refresh(); });
 let busy = false, completed = null, completedInput = null;
 const element = (tag, className, text) => { const node = document.createElement(tag); if (className) node.className = className; if (text !== undefined) node.textContent = text; return node; };
 
