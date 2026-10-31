@@ -15,7 +15,13 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: python -m unittest discover -s tests -v
       - run: python -m ghost_replay demo --repeats 5 --output report.json
+      - run: python -m ghost_replay capture --bundle examples/checkout-race.json --output evidence-v2.json
+      - run: python -m ghost_replay inspect-bundle --bundle evidence-v2.json
+      - run: python -m ghost_replay evidence-demo --repeats 5 --output evidence-report.json
       - uses: actions/upload-artifact@v4
         with:
           name: reproduction-${{ matrix.python }}
-          path: report.json
+          path: |
+            report.json
+            evidence-v2.json
+            evidence-report.json
