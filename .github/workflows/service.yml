@@ -22,7 +22,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          docker run -d --name ghost-replay-ci --read-only --cap-drop=ALL --security-opt=no-new-privileges -p 127.0.0.1:3000:3000 ghost-replay:ci
+          docker run -d --name ghost-replay-ci --read-only --tmpfs /data:rw,noexec,nosuid,size=64m,mode=1777 -e DATA_DIR=/data/ghost-replay --cap-drop=ALL --security-opt=no-new-privileges -p 127.0.0.1:3000:3000 ghost-replay:ci
           trap 'docker logs ghost-replay-ci; docker rm -f ghost-replay-ci' EXIT
           test "$(docker exec ghost-replay-ci id -u)" != 0
           for attempt in {1..30}; do
@@ -31,5 +31,20 @@ jobs:
           done
           docker exec ghost-replay-ci node service/healthcheck.mjs
           node service/smoke.mjs
+          node service/product-smoke.mjs
           docker stop --time 3 ghost-replay-ci
           test "$(docker inspect --format='{{.State.ExitCode}}' ghost-replay-ci)" = 0
+      - name: Root-owned volume initialization drops privileges before listening
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run -d --name ghost-replay-drop --user 0 --read-only --tmpfs /data:rw,noexec,nosuid,size=64m,mode=0700 --cap-drop=ALL --cap-add=KILL --cap-add=CHOWN --cap-add=FOWNER --cap-add=SETUID --cap-add=SETGID --cap-add=DAC_OVERRIDE --security-opt=no-new-privileges -e DROP_PRIVILEGES=1 -e DATA_DIR=/data/ghost-replay -p 127.0.0.1:3001:3000 ghost-replay:ci
+          trap 'docker logs ghost-replay-drop; docker rm -f ghost-replay-drop' EXIT
+          for attempt in {1..30}; do
+            if docker exec ghost-replay-drop node service/healthcheck.mjs; then break; fi
+            sleep 1
+          done
+          docker logs ghost-replay-drop | grep '"uid":1000'
+          SMOKE_URL=http://127.0.0.1:3001 node service/product-smoke.mjs
+          docker stop --time 3 ghost-replay-drop
+          test "$(docker inspect --format='{{.State.ExitCode}}' ghost-replay-drop)" = 0

@@ -125,3 +125,134 @@ export function createThemeController({ readPreference, writePreference, systemD
     refresh() { load(); return render(); },
   };
 }
+
+// Product workspace helpers. The checkout protocol helpers above remain for legacy evidence tests.
+export const MAX_REQUESTS = 6;
+export const MAX_BASELINE = 4096;
+export function newRequestId() {
+  if (typeof globalThis.crypto?.randomUUID==='function') return globalThis.crypto.randomUUID();
+  const bytes=globalThis.crypto.getRandomValues(new Uint8Array(16));bytes[6]=(bytes[6]&15)|64;bytes[8]=(bytes[8]&63)|128;
+  const hex=[...bytes].map(v=>v.toString(16).padStart(2,'0')).join('');return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
+}
+export const credentialKey = key => /token|secret|password|api[-_]?key|authorization|credential|signature|session|^key$|^auth$|^code$/i.test(key);
+export function publicRequestURL(value, { sanitize = false } = {}) {
+  if (typeof value !== 'string' || value.length > 2048) throw new Error('Enter an HTTPS URL of at most 2,048 characters.');
+  let url;
+  try { url = new URL(value.trim()); } catch { throw new Error('Enter a complete HTTPS URL, including the hostname.'); }
+  if (url.protocol !== 'https:' || (url.port && url.port !== '443')) throw new Error('Replay supports public HTTPS endpoints on port 443 only.');
+  const host=url.hostname.toLowerCase();
+  if (host==='localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal') || /^\[|^\d+\.\d+\.\d+\.\d+$/.test(host)) throw new Error('Use a public hostname. Local, private and literal IP destinations are not supported.');
+  if (url.username || url.password) { if (!sanitize) throw new Error('Remove credentials from the URL; use the temporary authorization controls instead.'); url.username='';url.password=''; }
+  const sensitive=[...url.searchParams.keys()].filter(credentialKey);
+  if (sensitive.length && !sanitize) throw new Error('Remove credential query parameters; use temporary authorization instead.');
+  sensitive.forEach(key=>url.searchParams.delete(key)); url.hash='';
+  return url.href;
+}
+export function sanitizeBody(text) {
+  if (typeof text !== 'string') return text;
+  try {
+    const source=JSON.parse(text);
+    let redacted=false;
+    const scrub = value => {
+      if (Array.isArray(value)) return value.map(scrub);
+      if (value && typeof value==='object') return Object.fromEntries(Object.entries(value).map(([key,item])=>[key,credentialKey(key)?(redacted=true,'[redacted]'):scrub(item)]));
+      return value;
+    };
+    const clean=scrub(source);return redacted?JSON.stringify(clean,null,2):text;
+  } catch { return text; }
+}
+export function parseHAR(text, idFactory = newRequestId) {
+  if (typeof text!=='string' || new TextEncoder().encode(text).length>5*1024*1024) throw new Error('Choose a HAR file or JSON export smaller than 5 MiB.');
+  let har;try{har=JSON.parse(text);}catch{throw new Error('This is not valid JSON. Export a HAR from your browser’s Network panel and try again.');}
+  if (!Array.isArray(har?.log?.entries)) throw new Error('A HAR must contain log.entries. Paste the whole HAR export, not a single request.');
+  const requests=[], warnings=[];let skipped=0,omittedBodies=0,cleanedURLs=0,unsupported=0;
+  for (const entry of har.log.entries) {
+    if (!['GET','HEAD'].includes(entry?.request?.method)) {skipped++;continue;}
+    if(requests.length>=MAX_REQUESTS){skipped++;continue;}
+    let url;
+    try {url=publicRequestURL(entry.request.url,{sanitize:true});}
+    catch {skipped++;unsupported++;continue;}
+    if(url!==entry.request.url)cleanedURLs++;
+    const baseline={};
+    if(Number.isInteger(entry.response?.status)&&entry.response.status>=100&&entry.response.status<=599)baseline.status=entry.response.status;
+    const content=entry.response?.content;
+    if(entry.request.method!=='HEAD' && typeof content?.text==='string') {
+      let body=content.text;
+      try {
+        if(content.encoding==='base64')body=new TextDecoder('utf-8',{fatal:true}).decode(Uint8Array.from(atob(body),c=>c.charCodeAt(0)));
+        else if(content.encoding)throw new Error('unsupported encoding');
+        if(body.length>MAX_BASELINE)throw new Error('oversized baseline');
+        // Preserve byte-for-byte text when no recognized credential fields require redaction.
+        const sanitized=sanitizeBody(body);
+        const scrubbed=sanitized;
+        if(scrubbed.length>MAX_BASELINE)throw new Error('oversized redacted baseline');
+        baseline.bodyText=scrubbed;
+      } catch {omittedBodies++;}
+    }
+    const target=new URL(url);
+    requests.push({id:idFactory(),label:(target.pathname==='/'?target.hostname:target.pathname).slice(0,80),method:entry.request.method,url,...(Object.keys(baseline).length?{baseline}:{}),assertions:{}});
+  }
+  if(!requests.length)throw new Error('No supported public HTTPS GET or HEAD requests were found. Other methods and private destinations cannot be replayed.');
+  if(skipped)warnings.push(`${skipped} ${skipped===1?'entry was':'entries were'} skipped (unsupported method, destination, or six-request limit).`);
+  if(cleanedURLs)warnings.push(`${cleanedURLs} ${cleanedURLs===1?'URL was':'URLs were'} cleaned of fragments or credential fields.`);
+  if(omittedBodies)warnings.push(`${omittedBodies} response ${omittedBodies===1?'body was':'bodies were'} omitted because the encoding or 4,096-character baseline limit was unsupported. Status baselines were kept.`);
+  return {requests,warnings,skipped,omittedBodies,unsupported,imported:requests.length};
+}
+export function prepareRequests(requests) {
+  if(!Array.isArray(requests)||!requests.length||requests.length>MAX_REQUESTS)throw new Error('Add between one and six requests before continuing.');
+  const ids=new Set();
+  return requests.map((request,index)=>{
+    const prefix=`Request ${index+1}: `;
+    if(typeof request.id!=='string'||!request.id||ids.has(request.id))throw new Error(prefix+'request identifiers must be unique.');
+    ids.add(request.id);
+    if(!['GET','HEAD'].includes(request.method))throw new Error(prefix+'only GET and HEAD can be replayed.');
+    let url;try{url=publicRequestURL(request.url);}catch(error){throw new Error(prefix+error.message);}
+    const value={id:request.id,label:(String(request.label||'').trim()||`Request ${index+1}`).slice(0,80),method:request.method,url};
+    const baseline={},assertions={};
+    for(const [source,dest] of [[request.baseline,baseline],[request.assertions,assertions]]) {
+      if(source?.status!==undefined&&source.status!=='') {
+        const number=typeof source.status==='number'?source.status:Number(source.status);
+        if(!Number.isInteger(number)||number<100||number>599)throw new Error(prefix+'status must be an integer from 100 to 599.');
+        dest.status=number;
+      }
+    }
+    if(request.baseline?.bodyText!==undefined) {
+      if(typeof request.baseline.bodyText!=='string'||request.baseline.bodyText.length>MAX_BASELINE)throw new Error(prefix+'baseline body must be at most 4,096 characters.');
+      baseline.bodyText=request.baseline.bodyText;
+    }
+    if(request.assertions?.bodyIncludes) {
+      if(typeof request.assertions.bodyIncludes!=='string'||request.assertions.bodyIncludes.length>256)throw new Error(prefix+'body assertion must be at most 256 characters.');
+      assertions.bodyIncludes=request.assertions.bodyIncludes;
+    }
+    if(request.assertions?.maxDurationMs!==undefined&&request.assertions.maxDurationMs!=='') {
+      const number=Number(request.assertions.maxDurationMs);
+      if(typeof request.assertions.maxDurationMs==='boolean'||!Number.isInteger(number)||number<50||number>10000)throw new Error(prefix+'duration assertion must be 50–10,000 ms.');
+      assertions.maxDurationMs=number;
+    }
+    if(Object.keys(baseline).length)value.baseline=baseline;
+    if(Object.keys(assertions).length)value.assertions=assertions;
+    return value;
+  });
+}
+export function formatDuration(ms) {
+  return typeof ms==='number'&&Number.isFinite(ms)?(ms<1000?`${Math.round(ms)} ms`:`${(ms/1000).toFixed(2)} s`):'—';
+}
+export function displayDate(value) {
+  const date=new Date(value);return Number.isFinite(date.getTime())?date.toLocaleString(undefined,{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'Date unavailable';
+}
+export function comparePreview(before,after) {
+  if(typeof before!=='string'||typeof after!=='string')return null;
+  let index=0;while(index<before.length&&index<after.length&&before[index]===after[index])index++;
+  if(index===before.length&&index===after.length)return null;
+  return {index,before:before.slice(Math.max(0,index-35),index+100),after:after.slice(Math.max(0,index-35),index+100)};
+}
+
+/** Missing observations never imply either a passing check or an absent configuration. */
+export function assertionViews(result, request) {
+  const checks = Array.isArray(result?.assertions) ? result.assertions.map(check => ({ ...check })) : [];
+  for (const [kind, expected] of Object.entries(request?.assertions || {})) {
+    if (!checks.some(check => check.kind === kind)) checks.push({ kind, expected, passed: null,
+      message: result?.actual === null ? 'Not evaluated: no response was received.' : 'No assertion outcome was retained in this run.' });
+  }
+  return checks.map(check => ({ ...check, state: check.passed === true ? 'passed' : check.passed === false ? 'failed' : 'not_evaluated' }));
+}

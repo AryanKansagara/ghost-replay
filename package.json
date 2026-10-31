@@ -3,10 +3,12 @@
   "version": "0.3.0",
   "private": true,
   "type": "module",
-  "engines": {"node": ">=24 <25"},
+  "engines": {
+    "node": ">=24 <25"
+  },
   "scripts": {
     "dev": "node service/main.mjs",
-    "start": "node service/main.mjs",
+    "start": "node service/launch.mjs",
     "test": "python3 -m unittest discover -s tests -v && node --test service-tests/*.test.mjs web/*.test.mjs",
     "test:http": "node --test service-tests/*.test.mjs"
   }

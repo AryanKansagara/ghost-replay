@@ -1,116 +1,64 @@
-# Deploying the bounded Ghost Replay application
+# Ghost Replay deployment
 
-This is a self-contained public-demo service for fictional inventory and an authored concurrency fixture. It is not a production incident replayer, a multi-tenant evidence store or a service that runs uploaded programs. The application is live at **https://ghost-replay.vercel.app/** with its actual engine on Railway. The previous service revision passed hosted tests, a Docker build and actual non-root/read-only container smoke; source updates get a new workflow run.
+Ghost Replay is a private trace workspace for replaying a user's **public HTTPS GET/HEAD** requests and comparing fresh responses with imported baselines and explicit assertions. The older checkout concurrency fixture remains a separate `/api/run` laboratory; its events and minimization do not represent a real imported trace. Source changes here require deployment and end-to-end QA before being called live.
 
-## Start and check
+## Runtime and persistent storage
 
-Requires Node 24.x and Python 3.10+ on Linux/macOS. No runtime npm or pip dependencies are installed. Linux is the container/CI target.
+Requires pinned Node 24.22.1 (built-in `node:sqlite`) and Python 3.10+ for the secondary lab. No runtime npm/pip dependencies. Run `npm test`, then `npm run dev` for localhost:3000; preview flags `-- --host 0.0.0.0 --port 4173 --strictPort` are supported. `PORT` supplies the production port. `npm start` uses the privilege-checking launcher; development starts main directly.
 
-```sh
-npm test
-PORT=3000 npm start
-# In another terminal:
-node service/healthcheck.mjs
-node service/smoke.mjs
-```
+`DATA_DIR` selects the durable SQLite directory. With no setting, local development uses `.ghost-data/`. An explicitly configured unusable directory fails startup; there is no temporary-directory fallback. Readiness requires initialized storage, checked static assets and the existing fixture self-check. `/healthz` is liveness, `/readyz` readiness. The storage path/database cannot be symlinks. Directory mode is0700, database0600; capability tokens are hashed with SHA-256 at rest. Data is private by possession of a 256-bit token, **not user-account authentication or encryption at rest**. Losing the token loses access; copying it grants full workspace access. Provider volume access/backup access remains privileged.
 
-Development/preview command:
-
-```sh
-npm run dev -- --host 0.0.0.0 --port 4173 --strictPort
-PORT=4173 node service/healthcheck.mjs
-SMOKE_URL=http://127.0.0.1:4173 node service/smoke.mjs
-```
-
-`--port` overrides `PORT`; `--host` accepts `0.0.0.0`, `127.0.0.1` or `::`. Unknown flags, invalid ports and occupied ports fail startup rather than selecting another port. `--strictPort` documents that existing behavior. Static assets are loaded and checked at startup: restart after editing `web/`.
-
-`GET /healthz` returns liveness. `GET /readyz` returns 200 only after all four required web files have been checked and a Python worker has executed the actual buggy/fixed loopback-HTTP fixture self-check. Missing assets, an out-of-root asset symlink, missing Python or failed self-check gives readiness 503. A busy but healthy instance stays ready and reports `busy:true`; admission rejects excess work separately. Readiness is a startup dependency check, not a repeated reproduction on every probe. Health endpoints disclose no paths, credentials or subprocess IDs.
-
-## Railway backend and Vercel frontend
-
-The persistent Node/Python process belongs in the Docker backend. It must not be treated as a Vercel static asset or assumed to run unchanged inside a Vercel function. `railway.json` selects the repository's Dockerfile, one replica, `/readyz`, a 60-second startup healthcheck allowance, bounded failure restarts, no requested rollout overlap and a 10-second termination grace. Do not override the image entrypoint/CMD: tini and the Node supervisor handle worker cleanup. Railway supplies `PORT`; the service listens on it at `0.0.0.0`. No database or volume is required. Per-instance admission/rate budgets require one instance; adding replicas changes the effective aggregate budget.
-
-The Railway backend is deployed at `https://ghost-replay-production.up.railway.app`. In static `vercel.json`, the specific `/api/run` rule comes first and resolves to the native function `/api/experiment`; the generic API and health rewrites retain the actual backend origin. **`BACKEND_ORIGIN` is no longer required on Vercel.** The rejected programmatic `vercel.ts` has been removed so a Git deployment receives literal `destination` strings. The build command remains `node scripts/build-frontend.mjs` and output remains `dist/`; the builder packages only four browser assets. `api/experiment.mjs` is deployed separately as a native Node function; Python and the fixture supervisor remain on Railway. A future backend-domain change requires an explicit configuration update and redeployment.
-
-### Bounded JSON relay
-
-The native Vercel handler uses the standalone `{fetch: POST}` Web Request/Response entrypoint. It accepts only POST JSON with a 16 KiB byte limit, forwards the original JSON text to the fixed Railway `/api/run` endpoint, and sends only four declared headers: JSON Content-Type/Accept, identity Accept-Encoding, and the exact production frontend Origin. It does not forward browser cookies, authentication, request compression, forwarded-host metadata or arbitrary client headers. The existing Railway schema and actual engine remain authoritative.
-
-The relay reads at most 256 KiB of upstream bytes, requires valid UTF-8 JSON and creates a fresh `Response.json` result with the upstream status. It never copies upstream Content-Encoding, Content-Length, Transfer-Encoding or Set-Cookie. Safe numeric Retry-After values are preserved. This addresses the observed browser/proxy transport boundary rather than substituting an invented result: direct backend browser runs worked while the original external POST rewrite could return an unreadable response. A 12-second relay deadline and `request.signal` propagate cancellation; the function is configured for cancellation with a 15-second platform maximum. Invalid/oversized/non-JSON upstream replies return bounded structured errors.
-
-Live production browser QA confirmed the relay path with actual run `d272ce89-ee7d-4360-9df6-d8548b32e6fe`: six input operations, buggy accepted 2/inventory −1, fixed accepted 1/inventory 0, and an actual four-operation minimized witness. Dark appearance persisted on reload. These are observed results for the controlled fixture, not a general production replay claim.
-
-**`PUBLIC_ORIGIN` on Railway is `https://ghost-replay.vercel.app`.** This optional startup setting is one exact, canonical HTTPS DNS origin; an explicit nondefault port is permitted. No trailing slash, path, query, fragment, username/password, wildcard, list, whitespace or ambiguous hostname is accepted. Invalid values stop startup before opening a listener and emit a fixed configuration error without echoing the supplied value. With the setting absent, only direct same-origin browser requests are accepted.
-
-The backend compares a supplied `Origin` against the exact configured public origin or the direct request's `Host` authority. It never grants origin permission from `Forwarded`/`X-Forwarded-*`. `Sec-Fetch-Site: cross-site` is accepted only when `Origin` exactly equals `PUBLIC_ORIGIN`; missing or unrelated origins still fail. This exception supports the explicitly configured frontend/proxy boundary. No wildcard CORS or preflight API is added: the browser continues to call its own Vercel `/api/run` URL and Vercel performs the server-side rewrite. Direct cross-origin browser fetches to Railway are not the deployment design.
-
-Preview domains are intentionally not wildcard-allowed. A different preview frontend needs its exact origin configured on a separate backend or an explicit operator change; it does not automatically inherit production origin permission. Use the stable production frontend origin for the production backend.
-
-Before declaring the split deployment complete, verify the actual Vercel root/assets, proxied readiness, a failing paired race with a real minimized witness, a clean sequential control, and explicit rejection of a nonallowed origin at the backend. Preserve the tested Git commit and built image digest. Configure any resource/spend limits and platform credentials through the provider; the source files neither provision a service nor bypass account approval.
-
-## API contract
-
-`POST /api/run`, uncompressed `application/json` (optional `charset=utf-8`):
-
-```json
-{"schedule":["noise:catalog","A:read","B:read","A:commit","B:commit"],"stock":1}
-```
-
-Exactly two fields, in either order. Stock is an integer from 0 through 100; booleans, fractional/exponent spellings and string numbers reject. A schedule contains 4..12 strings. Each required `A:read`, `A:commit`, `B:read`, `B:commit` occurs exactly once, with each read preceding its commit. The only optional operations match `noise:[A-Za-z0-9_-]{1,48}`. Duplicate JSON keys, invalid UTF-8, extra keys, nested input objects and any other operation reject. No URL, file, shell command, code, worker path, repetition count or upstream credential can be submitted.
-
-Success returns:
+Railway: retain the Dockerfile/`railway.json`, one instance, persistent volume at `/data`; configure:
 
 ```text
-{runId, buggy, fixed, minimization, summary}
+DATA_DIR=/data/ghost-replay
+DROP_PRIVILEGES=1
+RAILWAY_RUN_UID=0
+PUBLIC_ORIGIN=https://ghost-replay.vercel.app
 ```
 
-`buggy` and `fixed` are the actual `core.reproduce()` results, including observed events and complete invariant results. `minimization` is the actual `core.minimize()` result only when the buggy run violates the invariant; otherwise it is null. `runId` is a fresh UUID, distinct from the engine's stable configuration experiment ID. Summary fields are `transport`, `initialStock`, `scheduleSteps`, `buggyViolation`, `fixedViolation`, `removedSteps`, `durationMs` and `claim`. Timing is local request processing, not a Sentry or replay-performance benchmark. Nothing is saved server-side.
+Railway's initial mount can be root-owned. The explicitly enabled launcher validates canonical `/data/...` paths and rejects symlinks, makes `/data` traversable0711, creates only missing path directories, chowns **only the final application directory** to1000:1000 and modes0700, clears supplementary groups and drops gid/uid1000 **before importing the application or opening a listener**. It never recursively chowns volume files. Failed initialization/drop exits. Existing database ownership must already permit uid1000 access. Normal image execution remains `USER node`; root execution without explicit initialization is rejected. The provider must retain the volume across deployments. A single attached volume is not a distributed/multi-replica database.
 
-Application failures return `{error:{code,message},requestId}` with fixed safe messages. Invalid requests are 400; excessive bytes 413; unsupported media/encoding 415; cross-origin requests 403; wrong method 405. Busy/rate limits return 429, unready/draining service 503, time budget exhaustion 504, and failed/malformed worker output 502. Responses with 429/503 include `Retry-After: 3`. This is retry advice, not a reservation of capacity. Low-level malformed HTTP can instead receive Node's empty 400/408 parser response.
+SQLite uses4096-byte pages, maximum8192 pages (~32MiB), DELETE rollback journals (no unbounded WAL), secure-delete, busy timeout1s and FULL auto-vacuum. Transient rollback journal space can approach another database copy: reserve at least128MiB volume capacity. Existing databases with incompatible page size/size limits fail startup. Capacity failures return507; storage unavailable returns503. At most500 workspaces exist, ten scenarios and twenty reports per workspace (oldest replaced automatically), each stored record≤200,000bytes. Workspaces inactive30days are pruned at startup/new workspace creation. These are retention limits, not indefinite backup guarantees. Back up the volume through the provider if recovery is needed. Deletes are logical database deletion plus SQLite secure-delete; provider snapshots can retain earlier data.
 
-## Hard bounds and cleanup
+## Vercel transport
 
-| Resource | Bound/behavior |
+The static build `node scripts/build-frontend.mjs` outputs allowlisted browser assets to `dist/`. `vercel.json` routes each workspace endpoint to native `api/product.mjs`, which relays only to the fixed Railway origin `https://ghost-replay-production.up.railway.app`. Resource and UUID queries are allowlisted; there is no user-controlled relay target. Workspace token is the only forwarded capability header. Browser cookies, browser Authorization, arbitrary headers and upstream compression/cookies are never forwarded. JSON is normalized into a fresh response. Native product function maxDuration30s, internal24s, client cancellation forwarded. The old native experiment relay stays separate. BACKEND_ORIGIN is not required; changing the real backend domain requires explicit source changes.
+
+`PUBLIC_ORIGIN` allows one exact canonical HTTPS origin alongside direct same-origin requests. Forwarded headers never grant origin trust. No wildcard CORS. Preview origins are not automatically authorized. Vercel browser requests remain same-origin; the server-side relay crosses to Railway.
+
+## Product API
+
+JSON request bodies≤65,536bytes, UTF-8, uncompressed, duplicate/prototype keys rejected. Use `X-Workspace-Token` on every endpoint except bootstrap. All failures use `{error:{code,message}}` (server may add requestId). No credentials or user target URL are logged by the application.
+
+| Endpoint | Contract |
 | --- | --- |
-| Request body | 16,384 bytes, including chunked transfer; compression rejected |
-| JSON | Only the fixed schema above; duplicate keys rejected before execution |
-| Headers and connections | 8 KiB header block, 32 header fields, 32 concurrent sockets |
-| Body upload | 2 seconds after request admission |
-| Experiment worker | At most 8 seconds; no repeated worker retries |
-| Admitted request | Absolute 9-second deadline, including upload; process termination escalates after 250 ms |
-| Incomplete HTTP headers/request | Node 5-second receive timeout, checked every 500 ms |
-| Active operations | One, including body upload and worker cleanup; no waiting queue |
-| Rate | Instance-global token bucket, capacity 20, refilling 20 per minute |
-| Worker output | 128 KiB stdout, 8 KiB stderr; overflow terminates the worker |
-| Static files | Exact `/`, `/index.html`, `/styles.css`, `/app.js`, `/helpers.mjs` allowlist; 256 KiB per file |
+| POST `/api/workspaces` | `{}` → `{workspaceToken,workspace:{id,createdAt}}` (201) |
+| GET `/api/workspace` | `{workspace,scenarios:[{id,name,requestCount,updatedAt}],runs:[{id,name,createdAt,summary,durationMs}]}` |
+| DELETE `/api/workspace` | `{}` → `{deleted:true}`; token invalidated;409 while any replay active |
+| POST `/api/scenarios` | `{id?,name,requests}` → `{scenario}`; supplied id must already belong to workspace |
+| GET `/api/scenarios?id=UUID` | `{scenario}` including sanitized requests |
+| DELETE `/api/scenarios` | `{id}` → `{deleted:true}` |
+| POST `/api/runs` | `{name?,requests,auth?}` → `{run}` synchronously after actual HTTP work |
+| GET `/api/runs?id=UUID` | `{run}`; canonical sanitized requests/results, suitable for JSON export/reopen |
+| DELETE `/api/runs` | `{id}` → `{deleted:true}` |
 
-Deadlines are enforced by the Node supervisor on a responsive host; they are not a hard real-time guarantee under a suspended kernel or exhausted machine. Work is cancelled on client response-socket closure. SIGTERM/SIGINT marks the service draining, aborts the current job, stops accepting connections and closes idle sockets. Remaining sockets are forced closed after 500 ms. Cancellation and timeout signal the worker process group and escalate to SIGKILL after 250 ms. Before releasing admission, the supervisor waits for the child's close and a bounded 400 ms group-stop barrier: on Linux it checks `/proc` group membership until no member is executing (zombies have already closed descriptors). Surviving same-group descendants are killed even if the leader exits first or its stdio pipes close. A failed/inaccessible cleanup check marks the runner unhealthy, drops readiness and rejects further experiments until restart. The configured admission/termination/inspection budgets total at most 9.65 seconds on a responsive host. The fixed Python worker creates no temporary directories, export files or database. Its loopback servers/threads belong to that disposable process; no state persists after exit. The container uses tini to reap adopted descendants.
+Requests:1..6 objects `{id?:UUID,label?:string,method:'GET'|'HEAD',url,baseline?:{status?,bodyText?},assertions?:{status?,bodyIncludes?,maxDurationMs?}}`. Names/labels≤80characters, URL≤2048, baseline text≤4096, inclusion text1..256, status100..599, duration assertion50..10000ms. No arbitrary request headers/body/scripts. A duration assertion does not extend the hard timeout.
 
-This is supervision of trusted packaged code, not an OS sandbox for user programs. Descendants that deliberately detach into another session are outside process-group cleanup; the included worker does not spawn such processes and the API cannot supply executable code. Linux process metadata must be readable and match the caller's PID namespace. A mismatched `/proc/self` identity or other POSIX host conservatively waits for the process group to disappear and may become unready if orphan zombies are not promptly reaped. The local execution sandbox has mismatched PID/proc views, so its tests check socket closure and fail-closed behavior rather than inferring descendant liveness from unrelated host PIDs; hosted Linux CI retains strict matching-namespace assertions. Linux is the container target. Native Windows supervision is not a supported production target.
+Optional `auth:{header:'Authorization'|'X-Api-Key',value,hostname}` is ephemeral printable ASCII≤2048, applied only to exactly matching canonical hostname (never subdomains). It is not stored. URL userinfo and known credential query keys are rejected. Supplied auth material, Bearer patterns and recognizable credential keys in JSON/text are redacted before persistence. Only content-type/cache-control/etag/last-modified/content-length response headers are kept, capped512characters each. **Redaction cannot infer every secret in arbitrary content:** review imports, URLs, labels, responses and exports; do not submit confidential datasets. Never put credentials in URL paths/labels/baselines. Workspace token is the only value the frontend should persist locally; auth must never enter localStorage.
 
-The rate budget is global per process, without an unbounded IP map or trust in forwarded headers. It limits this small anonymous demonstration; it is not cross-replica quota enforcement or tenant authentication. Deploy one process per instance. Internet hosting should put TLS, network-level abuse controls, connection limits and deployment resource limits at the hosting boundary. Keep the application free of real incident/customer secrets; no authentication or durable private evidence storage is provided.
+Each report has actual timing, status, allowed headers, UTF-8 body preview≤4096characters, received byte count, sanitized full-text SHA-256, baseline status/hash, exact status/body-change flags and bounded first-difference context. JSON bodies are canonicalized during credential redaction; comparisons are over this sanitized text, not original byte identity. `summary` contains total/passed/failed/errors/changed. Baseline changes or failed assertions produce `failed`; HTTP≥400 also fails unless an explicit baseline/asserted status expects that result; redirects produce `error` and are never followed. Without a baseline/assertion,2xx produces passed (reachability only, not semantic correctness). DNS/network/body-limit failures have actual:null; no status/event/minimization is invented. Reports preserve canonical sanitized request configuration for reuse; no outgoing auth.
 
-## Container and CI release gates
+## Network and admission boundaries
 
-```sh
-docker build -t ghost-replay:local .
-docker run --rm --read-only --cap-drop=ALL --security-opt=no-new-privileges \
-  --memory=256m --cpus=1 --pids-limit=64 \
-  -p 127.0.0.1:3000:3000 ghost-replay:local
-```
+Only HTTPS443, public global addresses, GET/HEAD. DNS resolves **all** answers; any private/special address rejects the target. Literal IPv4/IPv6, mapped IPv4, documentation/link-local/multicast/transition ranges and alternate IPv4 spellings are checked. The selected verified address is pinned in the socket lookup while certificate verification and TLS SNI retain the original host. DNS rebinding cannot silently choose a second address. No redirects, cookies, connection reuse or user proxy configuration. Targets can still log GET/HEAD requests and those methods are not guaranteed side-effect-free by a malicious server; replay only endpoints you are authorized to read.
 
-The version-tagged official Node 24.22.1 Bookworm slim base installs distribution Python and tini, copies only application assets/code, runs as user `node`, and healthchecks `/readyz`. The image writes no application files and supports a read-only root filesystem. Build-time distribution packages receive the repository's current versions, so the Dockerfile alone is not a bit-for-bit build lock; record the successfully built image digest for deployment/rollback.
+Per target3s including DNS; per replay19s; sequential at most6 targets. Responses≤64KiB decoded UTF-8, identity encoding requested; unsupported compressed/binary/oversized responses produce error. One replay per instance, no queue,10/min token bucket. Metadata/bootstrap120/min instance-global;32 HTTP connections,8KiB headers/32fields,2s body upload.429 includes retry advice. Client disconnect/shutdown aborts outgoing requests. Limits are per instance: do not add replicas without redesigning budgets/storage. No recurring background replay, mutation methods, credentials vault, arbitrary code, browser replay, Sentry integration or production causality reconstruction.
 
-`.github/workflows/service.yml` runs all tests, builds Docker, checks non-root UID, starts with read-only filesystem/capabilities dropped, waits for readiness, executes a real paired/minimized fixture smoke and checks graceful container exit. The earlier Python-version fixture CI remains intact. Docker is absent locally, so each revision's hosted container build/run remains a release gate; the prior source revision passed this gate. Verify the new head's workflows before deploying, then verify the actual public readiness/API/UI and retain the image digest and host configuration. These files do not create hosting, domains, credentials or a public deployment.
+## Verification before release
 
-## Local evidence and design references
+Local verification passes23 Python tests plus75 Node tests (98 total), including18 new product groups. Run `npm test` and static build. New tests cover special/mapped IPs, mixed DNS answers, strict JSON, token hashing/durability/isolation, real local HTTP differential results through a test-only trusted transport, no redirect follow, exact auth-host scope, body caps, private history lifecycle, admission and native relay boundaries. Production code has no HTTP input selecting that test transport.
 
-Local checks cover 23 original engine/evidence tests, 23 HTTP/supervision tests, 8 relay transport tests, and 14 frontend helper/appearance tests. Relay tests exercise actual gzip HTTP decoding, fresh header normalization, fixed upstream selection, preservation of strict backend input semantics, request/response bounds, safe upstream errors, Retry-After, cancellation and deadline behavior. HTTP tests include genuine paired fixture runs, noise minimization, clean controls, malformed/duplicate input, byte/UTF-8 limits, path and symlink isolation, global rate/busy controls, upload/absolute deadlines, subprocess isolation, real stubborn worker cancellation, loopback socket closure, inherited/closed descendant pipes, safe failures, production entrypoint preview flags/SIGTERM, canonical public-origin configuration, forwarded-header negative controls and invalid-origin startup refusal. An independent reviewer reproduced the process-group bug, verified the repair and reran the suites.
+GitHub CI builds the real container and runs nonroot/read-only-root filesystem smoke with a bounded uid1000 writable tmpfs for the local database. Docker is unavailable in the authoring environment: a fresh hosted container result and actual deployed volume persistence/reload, saved workspace isolation, actual public target replay, baseline-change control, export, delete and browser-origin checks are release gates. Local tests alone do not prove current hosting deployment.
 
-- [Node HTTP server timeouts and connection lifecycle](https://nodejs.org/download/release/latest-v24.x/docs/api/http.html)
-- [Node child process groups and supervision](https://nodejs.org/api/child_process.html)
-- [Dockerfile USER and HEALTHCHECK](https://docs.docker.com/reference/dockerfile/)
-- [Railway configuration schema and reference](https://docs.railway.com/config-as-code/reference)
-- [Railway deployment healthchecks and injected PORT](https://docs.railway.com/deployments/healthchecks)
-
-The server uses Node's maintained HTTP implementation rather than Python's development HTTP server as the public listener. Python's `ThreadingHTTPServer` remains internal to each bounded, ephemeral loopback-only fixture, where its observations are the behavior this application demonstrates.
+Primary references: [Node24 SQLite](https://nodejs.org/download/release/latest-v24.x/docs/api/sqlite.html), [SQLite pragmas](https://www.sqlite.org/pragma.html), [Node HTTPS](https://nodejs.org/download/release/latest-v24.x/docs/api/https.html), [Node DNS](https://nodejs.org/download/release/latest-v24.x/docs/api/dns.html).

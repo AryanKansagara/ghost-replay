@@ -7,4 +7,4 @@ await mkdir(resolve(root, 'dist'));
 for (const name of ['index.html', 'styles.css', 'app.js', 'helpers.mjs']) {
   await copyFile(resolve(root, 'web', name), resolve(root, 'dist', name));
 }
-console.log('Built static frontend; API requires configured BACKEND_ORIGIN.');
+console.log('Built allowlisted static frontend; native API relays target the configured source origin.');

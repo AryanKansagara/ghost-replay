@@ -17,7 +17,7 @@ if (!/^[0-9]{1,5}$/.test(rawPort) || Number(rawPort) < 1 || Number(rawPort) > 65
   console.error('{"event":"startup_failed","code":"invalid_port"}'); process.exit(1);
 }
 let app;
-try { app = createService({ publicOrigin: process.env.PUBLIC_ORIGIN }); }
+try { app = createService({ publicOrigin: process.env.PUBLIC_ORIGIN, dataDir: process.env.DATA_DIR || '.ghost-data' }); }
 catch {
   console.error('{"event":"startup_failed","code":"invalid_service_configuration"}'); process.exit(1);
 }
@@ -29,7 +29,7 @@ async function shutdown() {
 process.on('SIGTERM', shutdown); process.on('SIGINT', shutdown);
 try {
   const address = await app.listen({ port: Number(rawPort), host });
-  console.log(JSON.stringify({ event: 'listening', port: address.port, ready: app.ready }));
+  console.log(JSON.stringify({ event: 'listening', uid: process.getuid?.(), port: address.port, ready: app.ready }));
 } catch {
   console.error('{"event":"startup_failed","code":"listen_failed"}');
   await app.close(); process.exitCode = 1;

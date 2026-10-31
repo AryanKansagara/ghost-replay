@@ -13,8 +13,12 @@ const request = (options = {}) => new Request(FRONTEND_ORIGIN + '/api/run', {
 test('standalone fetch entry and first-match internal rewrite avoid external/self loops', async () => {
   assert.equal(handler.fetch, POST);
   const config = JSON.parse(await readFile(new URL('../vercel.json', import.meta.url), 'utf8'));
-  assert.deepEqual(config.rewrites[0], { source: '/api/run', destination: '/api/experiment' });
-  assert.equal(config.rewrites[1].source, '/api/:path*');
+  const generic=config.rewrites.findIndex(rule=>rule.source==='/api/:path*');
+  const lab=config.rewrites.findIndex(rule=>rule.source==='/api/run');
+  assert(lab>=0&&lab<generic);
+  assert.equal(config.rewrites[lab].destination,'/api/experiment');
+  for(const resource of ['workspace','workspaces','scenarios','runs']){const index=config.rewrites.findIndex(rule=>rule.source==='/api/'+resource);assert(index>=0&&index<generic);assert.equal(config.rewrites[index].destination,'/api/product?resource='+resource);}
+  assert.deepEqual(config.functions['api/product.mjs'],{supportsCancellation:true,maxDuration:30});
   assert.deepEqual(config.functions['api/experiment.mjs'], { supportsCancellation: true, maxDuration: 15 });
 });
 test('fixed target and minimal headers preserve actual request text, not browser headers', async () => {
