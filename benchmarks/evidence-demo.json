@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "validation": "controlled_local_HTTP_and_bundle_roundtrip",
+  "repeats": 20,
+  "http_experiments": 40,
+  "captured_buggy_violations": 20,
+  "fixed_replay_violations": 0,
+  "unique_capture_ids": 20,
+  "unique_configuration_ids": 1,
+  "corrupted_bundles_rejected": 20,
+  "elapsed_seconds": 0.534715,
+  "engine_sha256": "238a5057e6ddc748366c7460934f974a8c4cb2b9f46d6be7ba32c5a5fbae21c6",
+  "environment": {
+    "python": "3.12.14",
+    "system": "Linux"
+  },
+  "authenticity": "not_established_by_checksums",
+  "claim": "Checksums and consistency checks for an authored fixture; no production reconstruction or performance claim"
+}
