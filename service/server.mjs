@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { createProduct } from './product/router.mjs';
 import { randomUUID } from 'node:crypto';
 import { readFile, realpath, stat } from 'node:fs/promises';
 import { join, sep } from 'node:path';
@@ -79,9 +80,10 @@ function readBody(req, signal, timeoutMs) {
 
 export function createService({ webRoot = join(APP_ROOT, 'web'), runner = new WorkerRunner(),
   bodyMs = LIMITS.bodyMs, totalMs = LIMITS.totalMs, workerMs = LIMITS.workerMs,
-  rateRequests = LIMITS.rateRequests, rateWindowMs = LIMITS.rateWindowMs, publicOrigin } = {}) {
+  rateRequests = LIMITS.rateRequests, rateWindowMs = LIMITS.rateWindowMs, publicOrigin, dataDir, productFetcher } = {}) {
   // These options are trusted startup/test configuration, never request fields.
   const allowedPublicOrigin = parsePublicOrigin(publicOrigin);
+  const product = dataDir === undefined ? null : createProduct({dataDir,fetcher:productFetcher});
   if (![bodyMs, totalMs, workerMs, rateRequests, rateWindowMs].every(value => Number.isInteger(value) && value > 0) ||
       bodyMs > LIMITS.bodyMs || totalMs > LIMITS.totalMs || workerMs > LIMITS.workerMs || rateRequests > LIMITS.rateRequests)
     throw new Error('invalid bounded service configuration');
@@ -109,17 +111,26 @@ export function createService({ webRoot = join(APP_ROOT, 'web'), runner = new Wo
     const rawPath = (req.url || '').split('?')[0];
     if (!rawPath.startsWith('/') || rawPath.length > 2_048) return errorResponse(res, new HttpError(400, 'invalid_path', 'Invalid request path.'), requestId);
     if (['GET', 'HEAD'].includes(req.method) && ['/healthz', '/readyz'].includes(rawPath)) {
-      const ready = !draining && assetsReady && workerReady && runner.healthy !== false;
+      const ready = !draining && assetsReady && workerReady && runner.healthy !== false && (!product || product.ready);
       if (rawPath === '/readyz' && !ready) res.setHeader('Retry-After', '3');
       return rawPath === '/healthz'
         ? json(res, 200, { status: 'live' })
-        : json(res, ready ? 200 : 503, { status: ready ? 'ready' : 'not_ready', checks: { staticAssets: assetsReady, fixtureWorker: workerReady }, busy: active !== null });
+        : json(res, ready ? 200 : 503, { status: ready ? 'ready' : 'not_ready', checks: { staticAssets: assetsReady, fixtureWorker: workerReady, ...(product ? { workspaceStorage: product.ready } : {}) }, busy: active !== null || product?.busy === true });
     }
     if (FILES.has(rawPath) && ['GET', 'HEAD'].includes(req.method)) {
       const file = assets.get(rawPath);
       if (!file) return errorResponse(res, new HttpError(503, 'assets_unavailable', 'The application assets are unavailable.'), requestId);
       res.writeHead(200, { 'Content-Type': file.type, 'Content-Length': file.bytes.length });
       return res.end(req.method === 'HEAD' ? undefined : file.bytes);
+    }
+    if (product?.matches(rawPath)) {
+      const configured = allowedPublicOrigin !== null && req.headers.origin === allowedPublicOrigin;
+      let direct = false;
+      try { const origin = new URL(req.headers.origin); direct = req.headers.origin === origin.origin && ['http:', 'https:'].includes(origin.protocol) && origin.host === req.headers.host; } catch {}
+      if ((req.headers.origin && !configured && !direct) || (req.headers['sec-fetch-site'] === 'cross-site' && !configured))
+        return errorResponse(res,new HttpError(403,'cross_origin','Cross-origin workspace requests are not allowed.'),requestId);
+      if (draining) return errorResponse(res,new HttpError(503,'not_ready','Service is shutting down.'),requestId);
+      return product.handle(req,res);
     }
     if (rawPath !== '/api/run') return errorResponse(res, new HttpError(404, 'not_found', 'Resource not found.'), requestId);
     if (req.method !== 'POST') {
@@ -180,8 +191,8 @@ export function createService({ webRoot = join(APP_ROOT, 'web'), runner = new Wo
   let closing;
   return {
     server, runner,
-    get ready() { return !draining && assetsReady && workerReady && runner.healthy !== false; },
-    get busy() { return active !== null; },
+    get ready() { return !draining && assetsReady && workerReady && runner.healthy !== false && (!product || product.ready); },
+    get busy() { return active !== null || product?.busy === true; },
     async listen({ port = 3000, host = '0.0.0.0' } = {}) {
       await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, host, resolve); });
       await initialize(); return server.address();
@@ -193,7 +204,7 @@ export function createService({ webRoot = join(APP_ROOT, 'web'), runner = new Wo
       closing = (async () => {
         const sockets = new Promise(resolve => server.close(resolve)); server.closeIdleConnections();
         const force = setTimeout(() => server.closeAllConnections(), 500);
-        await runner.shutdown(); await sockets; clearTimeout(force);
+        await Promise.all([runner.shutdown(), product?.close()]); await sockets; clearTimeout(force);
       })();
       return closing;
     },
