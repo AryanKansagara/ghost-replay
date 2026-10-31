@@ -5,6 +5,10 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
+      "source": "/api/run",
+      "destination": "/api/experiment"
+    },
+    {
       "source": "/api/:path*",
       "destination": "https://ghost-replay-production.up.railway.app/api/:path*"
     },
@@ -43,5 +47,11 @@
         }
       ]
     }
-  ]
+  ],
+  "functions": {
+    "api/experiment.mjs": {
+      "supportsCancellation": true,
+      "maxDuration": 15
+    }
+  }
 }
