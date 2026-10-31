@@ -4,6 +4,8 @@ A small executable incident laboratory: reproduce a checkout race over real loca
 
 This is a bounded first prototype inspired by Sentry's debugging workflows. It is independent of Sentry and has **no live Sentry integration**. It does not replay arbitrary production applications.
 
+**Current milestone (2026-10-31):** the existing HTTP experiment now has a strict v2 evidence envelope, source/configuration/content checksums, provenance, validated import/export, and explicit rejection of incomplete or inconsistent inputs. There are 22 passing local tests. Browser capture and live Sentry import remain future work.
+
 ## Run
 
 Python 3.10+; no runtime dependencies, accounts, browser installation, API keys, or package installation required.
@@ -14,9 +16,16 @@ python -m unittest discover -s tests -v
 python -m ghost_replay reproduce --bundle examples/checkout-race.json
 python -m ghost_replay minimize --bundle examples/checkout-race.json
 python -m ghost_replay verify --repeats 20
+python -m ghost_replay capture --bundle examples/checkout-race.json --output evidence-v2.json
+python -m ghost_replay inspect-bundle --bundle evidence-v2.json
+python -m ghost_replay export-bundle --bundle evidence-v2.json --output canonical-evidence.json
+python -m ghost_replay reproduce --bundle canonical-evidence.json --mode fixed
+python -m ghost_replay evidence-demo --repeats 20 --output evidence-report.json
 ```
 
 Run commands from this repository. `reproduce --mode fixed` executes the patched handler. A reproduced failure is a successful experiment and exits 0; malformed/incomplete input exits 2. `verify` exits 1 if any fixed implementation run violates the invariant. Report paths' parent directories must already exist.
+
+`capture` runs the controlled fixture and emits v2 observations. `inspect-bundle` and `export-bundle` validate without executing an experiment; export preserves the capture and canonicalizes its JSON. A v1 file remains a supported **unsealed recipe** for reproduction or capture. It cannot be silently exported as observed evidence. `verify` always enumerates its built-in schedules and rejects `--bundle`; `--mode` is only supported by capture/reproduce.
 
 ## What actually executes
 
@@ -29,6 +38,12 @@ Invariant: inventory must remain nonnegative and accepted reservations must not 
 ## Evidence and identity
 
 The example bundle is hand-authored synthetic fixture input. Schedule steps are marked **hypothesis**, initial stock **fixture**, emitted server operations **observed**, and invariant results **derived**. An observed operation's sequence number is the logical ordering in this isolated experiment; it is not a captured production timestamp. JSON reports include a stable SHA-256-derived experiment ID over fixture configuration. It identifies the configuration, not a unique run, code revision, or tamper-proof evidence.
+
+V2 captures add a distinct random capture ID, the SHA-256 of the included fixture engine, a recipe hash, and a checksum of the full evidence document. The importer checks the exact supported schema and verifies that observations, responses, and derived results agree with this finite fixture contract. Source changes fail closed; the importer does not execute a historical source snapshot. See [EVIDENCE.md](EVIDENCE.md) for the format and canonicalization contract.
+
+**Checksums are not signatures or proof of authenticity.** An untrusted producer can construct a self-consistent document and recompute all hashes. “Observed” is an asserted provenance category, not cryptographic evidence that a remote event occurred. Current source matching and internal consistency are narrower checks. This prototype neither reconstructs masked inputs nor verifies arbitrary production telemetry.
+
+The checked-in [v2 example](examples/checkout-evidence-v2.json) was captured from the local synthetic fixture. The measured [evidence demonstration](benchmarks/evidence-demo.json) ran 20 captures plus 20 fixed-handler replays: 20 vulnerable violations, zero fixed violations, 20 distinct capture IDs, and 20 rejected deliberately corrupted envelopes. Its local elapsed time is recorded for reproducibility, not a performance claim.
 
 Only allowlisted operations execute; bundle text is never evaluated as code or sent to arbitrary destinations. No user data, headers, tokens, or source snapshots are collected. Importing real Sentry events and sanitizing arbitrary payloads are future work, not implemented capabilities.
 

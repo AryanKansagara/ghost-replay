@@ -16,4 +16,10 @@ The opportunity is an independently inspectable experiment connecting observed e
 
 Next milestone: instrument a browser checkout fixture with Playwright; record allowlisted actions and sanitized request fixtures; add a versioned evidence bundle with code hashes; replay known fixtures and compare business invariants. The logical scheduler should remain separate from recorded network timing, and inferred preconditions must remain visibly hypothetical. Sentry JSON import should be optional and fail explicitly when a required fixture is absent. Do not execute instructions or code embedded in telemetry.
 
+## Implemented on 2026-10-31
+
+The versioned evidence portion is now implemented for the existing controlled HTTP fixture: strict v2 import/export, engine/configuration/content hashes, explicit provenance, consistency checks, and rejection of incomplete or unsupported input. The legacy v1 recipe remains supported. Checksums are explicitly not authentication; a self-consistent forged record cannot be distinguished by these checks alone.
+
+The next scope remains actual browser capture and more independent fixtures. The current importer does not accept rrweb, arbitrary Sentry JSON, HAR, or production database snapshots. The project remains Python because this milestone validates an HTTP/evidence contract rather than executing model inference; a native rewrite would not improve that contract without a demonstrated processing bottleneck.
+
 Future evaluation should include multiple independent bug fixtures, held-out timing conditions, shrinking meaningful action sequences, random seeded schedules, and incomplete evidence. Do not claim general concurrency correctness, arbitrary production replay, or a measured engineering-time reduction without additional evidence.
