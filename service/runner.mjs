@@ -1,19 +1,51 @@
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { readdir, readFile } from 'node:fs/promises';
+import { setTimeout as delay } from 'node:timers/promises';
+import { performance } from 'node:perf_hooks';
 import { HttpError } from './schema.mjs';
 
 export const APP_ROOT = fileURLToPath(new URL('../', import.meta.url));
 const OUTPUT_LIMIT = 131_072;
 
+async function groupActive(pid, deadline) {
+  try { process.kill(-pid, 0); } catch (error) { if (error.code === 'ESRCH') return false; throw error; }
+  if (process.platform !== 'linux') return true;
+  const self = await readFile('/proc/self/stat', 'utf8');
+  if (Number(self.slice(0, self.indexOf(' '))) !== process.pid) return true;
+  // SIGKILL delivery is asynchronous. On a matching Linux PID view, a zombie has already closed its
+  // descriptors, even while the host's init is still reaping the orphan.
+  for (const entry of await readdir('/proc')) {
+    if (performance.now() >= deadline) throw new Error('worker group inspection budget exhausted');
+    if (!/^[0-9]+$/.test(entry)) continue;
+    let text;
+    try { text = await readFile(`/proc/${entry}/stat`, 'utf8'); }
+    catch (error) { if (['ENOENT', 'ESRCH'].includes(error.code)) continue; throw error; }
+    const fields = text.slice(text.lastIndexOf(')') + 2).trim().split(/\s+/);
+    if (Number(fields[2]) === pid && !['Z', 'X'].includes(fields[0])) return true;
+  }
+  return false;
+}
+
+async function waitForGroupStop(pid) {
+  const deadline = performance.now() + 400;
+  do {
+    if (!await groupActive(pid, deadline)) return;
+    await delay(10);
+  } while (performance.now() < deadline);
+  throw new Error('worker group did not stop');
+}
+
 export class WorkerRunner {
   constructor({ python = 'python3', args = ['-m', 'ghost_replay.web_worker'], cwd = APP_ROOT } = {}) {
     // Constructor options are operator/test code only; never populated from HTTP input.
-    this.python = python; this.args = args; this.cwd = cwd; this.children = new Set();
+    this.python = python; this.args = args; this.cwd = cwd; this.children = new Set(); this.pending = new Set(); this.healthy = true;
   }
   get activePids() { return [...this.children].map(child => child.pid).filter(Boolean); }
   execute(data, { signal, timeoutMs = 8_000, check = false } = {}) {
+    if (!this.healthy) return Promise.reject(new HttpError(503, 'worker_unavailable', 'The experiment worker is unavailable.'));
     if (signal?.aborted) return Promise.reject(new HttpError(503, 'cancelled', 'The operation was cancelled.'));
-    return new Promise((resolve, reject) => {
+    const completion = new Promise((resolve, reject) => {
       const child = spawn(this.python, [...this.args, ...(check ? ['--check'] : [])], {
         cwd: this.cwd, detached: process.platform !== 'win32', shell: false,
         env: { PATH: process.env.PATH || '/usr/local/bin:/usr/bin:/bin',
@@ -59,8 +91,15 @@ export class WorkerRunner {
       // No work may survive the fixed worker's main process, even if a future
       // adapter creates descendants that close or retain the stdio pipes.
       child.on('exit', () => signalGroup('SIGKILL'));
-      child.on('close', code => {
-        if (settled) return; settled = true; cleanup();
+      child.on('close', async code => {
+        if (settled) return; settled = true;
+        signalGroup('SIGKILL');
+        try { if (child.pid && process.platform !== 'win32') await waitForGroupStop(child.pid); }
+        catch {
+          this.healthy = false;
+          stopped = new HttpError(503, 'worker_cleanup', 'The experiment worker is unavailable.');
+        }
+        cleanup();
         if (stopped) return reject(stopped);
         if (code !== 0) return reject(new HttpError(502, 'worker_failed', 'The experiment could not complete.'));
         try {
@@ -72,12 +111,13 @@ export class WorkerRunner {
       child.stdin.end(check ? '' : JSON.stringify(data));
       if (signal?.aborted) abort();
     });
+    this.pending.add(completion);
+    completion.then(() => this.pending.delete(completion), () => this.pending.delete(completion));
+    return completion;
   }
   async shutdown() {
-    const children = [...this.children];
-    await Promise.all(children.map(child => new Promise(resolve => {
-      child.once('close', resolve);
-      child.stop(new HttpError(503, 'shutting_down', 'The service is shutting down.'));
-    })));
+    const pending = [...this.pending];
+    for (const child of this.children) child.stop(new HttpError(503, 'shutting_down', 'The service is shutting down.'));
+    await Promise.allSettled(pending);
   }
 }

@@ -97,7 +97,7 @@ export function createService({ webRoot = join(APP_ROOT, 'web'), runner = new Wo
     const rawPath = (req.url || '').split('?')[0];
     if (!rawPath.startsWith('/') || rawPath.length > 2_048) return errorResponse(res, new HttpError(400, 'invalid_path', 'Invalid request path.'), requestId);
     if (['GET', 'HEAD'].includes(req.method) && ['/healthz', '/readyz'].includes(rawPath)) {
-      const ready = !draining && assetsReady && workerReady;
+      const ready = !draining && assetsReady && workerReady && runner.healthy !== false;
       if (rawPath === '/readyz' && !ready) res.setHeader('Retry-After', '3');
       return rawPath === '/healthz'
         ? json(res, 200, { status: 'live' })
@@ -113,7 +113,7 @@ export function createService({ webRoot = join(APP_ROOT, 'web'), runner = new Wo
     if (req.method !== 'POST') {
       res.setHeader('Allow', 'POST'); return errorResponse(res, new HttpError(405, 'method_not_allowed', 'Use POST for experiments.'), requestId);
     }
-    if (draining || !assetsReady || !workerReady) return errorResponse(res, new HttpError(503, 'not_ready', 'The service is not ready for experiments.'), requestId);
+    if (draining || !assetsReady || !workerReady || runner.healthy === false) return errorResponse(res, new HttpError(503, 'not_ready', 'The service is not ready for experiments.'), requestId);
     if (!/^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(req.headers['content-type'] || '') ||
         (req.headers['content-encoding'] && req.headers['content-encoding'].toLowerCase() !== 'identity'))
       return errorResponse(res, new HttpError(415, 'unsupported_media_type', 'Use uncompressed application/json UTF-8.'), requestId);
@@ -166,7 +166,7 @@ export function createService({ webRoot = join(APP_ROOT, 'web'), runner = new Wo
   let closing;
   return {
     server, runner,
-    get ready() { return !draining && assetsReady && workerReady; },
+    get ready() { return !draining && assetsReady && workerReady && runner.healthy !== false; },
     get busy() { return active !== null; },
     async listen({ port = 3000, host = '0.0.0.0' } = {}) {
       await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, host, resolve); });
