@@ -1,26 +1,20 @@
 # Ghost Replay
 
-A small executable incident laboratory: reproduce a checkout race over real local HTTP, reduce irrelevant fixture actions, and verify a patch against every valid ordering of two requests' read/commit operations.
+A private HTTP trace workspace: import a HAR or enter public HTTPS GET/HEAD requests, replay them against real endpoints, compare fresh status/body/timing with your baseline and assertions, then save/export the results. Saved traces and history belong to an anonymous capability-protected workspace backed by SQLite. Authentication for a target is optional, ephemeral and scoped to one exact hostname.
 
-This is a bounded first prototype inspired by Sentry's debugging workflows. It is independent of Sentry and has **no live Sentry integration**. It does not replay arbitrary production applications.
-
-**Live application:** [ghost-replay.vercel.app](https://ghost-replay.vercel.app/). The browser calls a bounded native Vercel JSON relay; the actual fixture runs on the [Railway backend](https://ghost-replay-production.up.railway.app/readyz). Deployment QA verified the six-step default race: buggy accepts two checkouts with inventory −1, fixed accepts one with inventory 0, and the actual minimizer reduces six steps to four. Persistent appearance also survived a reload.
-
-**Current milestone (2026-10-31):** the fixture and v2 evidence envelope now have an interactive application and bounded HTTP service. The UI runs the actual buggy/fixed Python HTTP fixture and its actual minimizer through a disposable worker, with persistent Light/Dark and system appearance controls. Local checks cover 23 original Python tests, 23 HTTP/service tests, 8 relay transport tests, and 14 frontend tests. Browser capture and live Sentry import remain future work.
-
-## Interactive application
-
-Node 24.x and Python 3.10+ on a POSIX host; no npm/pip runtime packages or credentials are needed.
+**Application URL:** [ghost-replay.vercel.app](https://ghost-replay.vercel.app/). This source upgrades the previous controlled lab; deployment and persistent-volume QA are tracked separately before calling the product revision live. It is independent of Sentry and has no live Sentry integration.
 
 ```sh
 npm run dev
-# Open http://localhost:3000
+# http://localhost:3000; Node24.22.1 and Python3.10+
 npm test
 ```
 
-`npm start` is the production process entrypoint. It binds `0.0.0.0` and reads `PORT` (default 3000). Preview tooling can use `npm run dev -- --host 0.0.0.0 --port 4173 --strictPort`; ports never silently fall back. `/healthz` is liveness and `/readyz` requires complete static assets plus an actual paired fixture self-check. The service keeps no run database and accepts only the included checkout operations; it cannot replay submitted applications or arbitrary URLs.
+The default workspace directory is `.ghost-data/`; set `DATA_DIR` to persistent storage for production. Workspace tokens grant full access: losing a token loses access, and sharing it shares access. Requests are limited to public HTTPS443 GET/HEAD,6 per run, with DNS validation/IP pinning, no redirects and no uploaded code. Review imports/exports for confidential content. Arbitrary browser sessions, mutation requests and production causal reconstruction are outside scope.
 
-See [DEPLOYMENT.md](DEPLOYMENT.md) for the API, limits, cancellation/cleanup, non-root container, CI smoke and live Railway-backend/Vercel-frontend configuration. The service passed hosted container CI; each source update gets a new workflow run. [web/README.md](web/README.md) describes the UI.
+See [DEPLOYMENT.md](DEPLOYMENT.md) for exact API, bounds, redaction limits, Railway volume/uid setup, Vercel native JSON relay, tests and release checks. Light/Dark preferences remain a browser feature. The original real-HTTP concurrency fixture and evidence tools below remain a separate lab; their events and minimized witness do not describe imported production traffic.
+
+## Secondary concurrency laboratory
 
 ## Run
 
@@ -67,4 +61,4 @@ Only allowlisted operations execute; bundle text is never evaluated as code or s
 
 The minimizer removes steps while preserving failure and valid protocol structure. It can remove `noise:` actions, which represent irrelevant test actions with no effect. It cannot delete required reads/commits, infer unknown production inputs, or minimize arbitrary application logic. Its result is explicitly one-step-minimal among valid schedules, not a globally minimal cause. All six read/commit schedules are enumerated by `verify`; that proves only the stated bounded fixture behavior. Scheduling hooks add instrumentation and are not transparent production record/replay.
 
-The included UI and service run only this authored fixture. Browser action recording, rrweb import, a database, distributed cloud workers, patch generation and live Sentry integration remain unimplemented. See [RESEARCH.md](RESEARCH.md) for verified overlap and the next useful scope.
+The secondary lab runs only this authored fixture. The product workspace adds a database and public GET/HEAD trace replay; browser action recording, rrweb import, distributed cloud workers, patch generation and live Sentry integration remain unimplemented. See [RESEARCH.md](RESEARCH.md) for verified overlap and the next useful scope.

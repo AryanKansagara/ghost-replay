@@ -5,6 +5,22 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
+      "source": "/api/workspaces",
+      "destination": "/api/product?resource=workspaces"
+    },
+    {
+      "source": "/api/workspace",
+      "destination": "/api/product?resource=workspace"
+    },
+    {
+      "source": "/api/scenarios",
+      "destination": "/api/product?resource=scenarios"
+    },
+    {
+      "source": "/api/runs",
+      "destination": "/api/product?resource=runs"
+    },
+    {
       "source": "/api/run",
       "destination": "/api/experiment"
     },
@@ -52,6 +68,10 @@
     "api/experiment.mjs": {
       "supportsCancellation": true,
       "maxDuration": 15
+    },
+    "api/product.mjs": {
+      "supportsCancellation": true,
+      "maxDuration": 30
     }
   }
 }

@@ -7,3 +7,5 @@ dist/
 artifacts/
 .env
 /dist/
+
+.ghost-data/

@@ -7,10 +7,11 @@ COPY --chown=node:node package.json ./
 COPY --chown=node:node ghost_replay/ ./ghost_replay/
 COPY --chown=node:node service/ ./service/
 COPY --chown=node:node web/ ./web/
+RUN mkdir /app/.ghost-data && chown node:node /app/.ghost-data && chmod 700 /app/.ghost-data
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=15s --timeout=3s --start-period=15s --retries=3 \
   CMD ["node", "service/healthcheck.mjs"]
 STOPSIGNAL SIGTERM
 ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["node", "service/main.mjs"]
+CMD ["node", "service/launch.mjs"]
