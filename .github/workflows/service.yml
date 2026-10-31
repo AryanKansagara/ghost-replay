@@ -38,7 +38,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          docker run -d --name ghost-replay-drop --user 0 --read-only --tmpfs /data:rw,noexec,nosuid,size=64m,mode=0700 --cap-drop=ALL --cap-add=CHOWN --cap-add=FOWNER --cap-add=SETUID --cap-add=SETGID --cap-add=DAC_OVERRIDE --security-opt=no-new-privileges -e DROP_PRIVILEGES=1 -e DATA_DIR=/data/ghost-replay -p 127.0.0.1:3001:3000 ghost-replay:ci
+          docker run -d --name ghost-replay-drop --user 0 --read-only --tmpfs /data:rw,noexec,nosuid,size=64m,mode=0700 --cap-drop=ALL --cap-add=KILL --cap-add=CHOWN --cap-add=FOWNER --cap-add=SETUID --cap-add=SETGID --cap-add=DAC_OVERRIDE --security-opt=no-new-privileges -e DROP_PRIVILEGES=1 -e DATA_DIR=/data/ghost-replay -p 127.0.0.1:3001:3000 ghost-replay:ci
           trap 'docker logs ghost-replay-drop; docker rm -f ghost-replay-drop' EXIT
           for attempt in {1..30}; do
             if docker exec ghost-replay-drop node service/healthcheck.mjs; then break; fi
