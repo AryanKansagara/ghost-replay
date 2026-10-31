@@ -16,7 +16,11 @@ if (!validArgs || !['0.0.0.0', '127.0.0.1', '::'].includes(host)) {
 if (!/^[0-9]{1,5}$/.test(rawPort) || Number(rawPort) < 1 || Number(rawPort) > 65535) {
   console.error('{"event":"startup_failed","code":"invalid_port"}'); process.exit(1);
 }
-const app = createService();
+let app;
+try { app = createService({ publicOrigin: process.env.PUBLIC_ORIGIN }); }
+catch {
+  console.error('{"event":"startup_failed","code":"invalid_service_configuration"}'); process.exit(1);
+}
 let exiting = false;
 async function shutdown() {
   if (exiting) return; exiting = true;

@@ -17,6 +17,17 @@ const FILES = new Map([
   ['/helpers.mjs', ['helpers.mjs', 'text/javascript; charset=utf-8']],
 ]);
 
+export function parsePublicOrigin(value) {
+  if (value === undefined) return null;
+  const invalid = () => new Error('PUBLIC_ORIGIN must be one canonical HTTPS DNS origin.');
+  if (typeof value !== 'string' || value.length > 300) throw invalid();
+  let origin;
+  try { origin = new URL(value); } catch { throw invalid(); }
+  if (origin.protocol !== 'https:' || value !== origin.origin || origin.hostname.length > 253 ||
+      !origin.hostname.split('.').every(label => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label))) throw invalid();
+  return origin.origin;
+}
+
 function headers(res) {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
@@ -68,8 +79,9 @@ function readBody(req, signal, timeoutMs) {
 
 export function createService({ webRoot = join(APP_ROOT, 'web'), runner = new WorkerRunner(),
   bodyMs = LIMITS.bodyMs, totalMs = LIMITS.totalMs, workerMs = LIMITS.workerMs,
-  rateRequests = LIMITS.rateRequests, rateWindowMs = LIMITS.rateWindowMs } = {}) {
+  rateRequests = LIMITS.rateRequests, rateWindowMs = LIMITS.rateWindowMs, publicOrigin } = {}) {
   // These options are trusted startup/test configuration, never request fields.
+  const allowedPublicOrigin = parsePublicOrigin(publicOrigin);
   if (![bodyMs, totalMs, workerMs, rateRequests, rateWindowMs].every(value => Number.isInteger(value) && value > 0) ||
       bodyMs > LIMITS.bodyMs || totalMs > LIMITS.totalMs || workerMs > LIMITS.workerMs || rateRequests > LIMITS.rateRequests)
     throw new Error('invalid bounded service configuration');
@@ -117,13 +129,15 @@ export function createService({ webRoot = join(APP_ROOT, 'web'), runner = new Wo
     if (!/^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(req.headers['content-type'] || '') ||
         (req.headers['content-encoding'] && req.headers['content-encoding'].toLowerCase() !== 'identity'))
       return errorResponse(res, new HttpError(415, 'unsupported_media_type', 'Use uncompressed application/json UTF-8.'), requestId);
+    const configuredOrigin = allowedPublicOrigin !== null && req.headers.origin === allowedPublicOrigin;
     if (req.headers.origin) {
       let origin;
       try { origin = new URL(req.headers.origin); } catch {}
-      if (!origin || !['http:', 'https:'].includes(origin.protocol) || origin.host !== req.headers.host)
+      const directSameOrigin = origin && req.headers.origin === origin.origin && ['http:', 'https:'].includes(origin.protocol) && origin.host === req.headers.host;
+      if (!configuredOrigin && !directSameOrigin)
         return errorResponse(res, new HttpError(403, 'cross_origin', 'Cross-origin experiment requests are not allowed.'), requestId);
     }
-    if (req.headers['sec-fetch-site'] === 'cross-site') return errorResponse(res, new HttpError(403, 'cross_origin', 'Cross-origin experiment requests are not allowed.'), requestId);
+    if (req.headers['sec-fetch-site'] === 'cross-site' && !configuredOrigin) return errorResponse(res, new HttpError(403, 'cross_origin', 'Cross-origin experiment requests are not allowed.'), requestId);
     if (Number(req.headers['content-length']) > LIMITS.bodyBytes) return errorResponse(res, new HttpError(413, 'body_too_large', 'Request body exceeds 16 KiB.'), requestId);
     if (active) return errorResponse(res, new HttpError(429, 'busy', 'An experiment is already running. Try again shortly.'), requestId);
     if (!takeBudget()) return errorResponse(res, new HttpError(429, 'rate_limited', 'The instance experiment budget is temporarily exhausted.'), requestId);
