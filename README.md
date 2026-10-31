@@ -4,7 +4,7 @@ A small executable incident laboratory: reproduce a checkout race over real loca
 
 This is a bounded first prototype inspired by Sentry's debugging workflows. It is independent of Sentry and has **no live Sentry integration**. It does not replay arbitrary production applications.
 
-**Current milestone (2026-10-31):** the fixture and v2 evidence envelope now have a same-origin interactive application and bounded HTTP service. The UI runs the actual buggy/fixed Python HTTP fixture and its actual minimizer through a disposable worker. Local checks pass: 23 original Python tests, 20 HTTP/service tests, and 7 frontend helper tests. Browser capture and live Sentry import remain future work.
+**Current milestone (2026-10-31):** the fixture and v2 evidence envelope now have an interactive application and bounded HTTP service. The UI runs the actual buggy/fixed Python HTTP fixture and its actual minimizer through a disposable worker, with persistent Light/Dark and system appearance controls. Local checks pass: 23 original Python tests, 23 HTTP/service tests, and 14 frontend tests. Browser capture and live Sentry import remain future work.
 
 ## Interactive application
 
@@ -18,7 +18,7 @@ npm test
 
 `npm start` is the production process entrypoint. It binds `0.0.0.0` and reads `PORT` (default 3000). Preview tooling can use `npm run dev -- --host 0.0.0.0 --port 4173 --strictPort`; ports never silently fall back. `/healthz` is liveness and `/readyz` requires complete static assets plus an actual paired fixture self-check. The service keeps no run database and accepts only the included checkout operations; it cannot replay submitted applications or arbitrary URLs.
 
-See [DEPLOYMENT.md](DEPLOYMENT.md) for the API, limits, cancellation/cleanup, non-root container, CI smoke and remaining release gates. Container build and remote service CI are configured but have not run in this local environment; no public application deployment is claimed. [web/README.md](web/README.md) describes the UI.
+See [DEPLOYMENT.md](DEPLOYMENT.md) for the API, limits, cancellation/cleanup, non-root container, CI smoke and Railway-backend/Vercel-frontend configuration. The previously published service passed hosted container CI; the current changes must pass their new workflow run before release. No public application deployment is claimed by the source configuration. [web/README.md](web/README.md) describes the UI.
 
 ## Run
 

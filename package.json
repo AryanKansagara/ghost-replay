@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "node service/main.mjs",
     "start": "node service/main.mjs",
-    "test": "python3 -m unittest discover -s tests -v && node --test service-tests/*.test.mjs web/helpers.test.mjs",
+    "test": "python3 -m unittest discover -s tests -v && node --test service-tests/*.test.mjs web/*.test.mjs",
     "test:http": "node --test service-tests/*.test.mjs"
   }
 }

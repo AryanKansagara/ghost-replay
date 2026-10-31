@@ -1,6 +1,6 @@
 # Deploying the bounded Ghost Replay application
 
-This is a self-contained public-demo service for fictional inventory and an authored concurrency fixture. It is not a production incident replayer, a multi-tenant evidence store or a service that runs uploaded programs. The deployable process and release checks are supplied; a live public deployment, hosted service CI and a built container are not claimed by this local milestone.
+This is a self-contained public-demo service for fictional inventory and an authored concurrency fixture. It is not a production incident replayer, a multi-tenant evidence store or a service that runs uploaded programs. The previous service revision passed hosted tests, a Docker build and actual non-root/read-only container smoke; changes below require a new passing workflow. Provider configuration does not itself establish a live public deployment.
 
 ## Start and check
 
@@ -25,6 +25,20 @@ SMOKE_URL=http://127.0.0.1:4173 node service/smoke.mjs
 `--port` overrides `PORT`; `--host` accepts `0.0.0.0`, `127.0.0.1` or `::`. Unknown flags, invalid ports and occupied ports fail startup rather than selecting another port. `--strictPort` documents that existing behavior. Static assets are loaded and checked at startup: restart after editing `web/`.
 
 `GET /healthz` returns liveness. `GET /readyz` returns 200 only after all four required web files have been checked and a Python worker has executed the actual buggy/fixed loopback-HTTP fixture self-check. Missing assets, an out-of-root asset symlink, missing Python or failed self-check gives readiness 503. A busy but healthy instance stays ready and reports `busy:true`; admission rejects excess work separately. Readiness is a startup dependency check, not a repeated reproduction on every probe. Health endpoints disclose no paths, credentials or subprocess IDs.
+
+## Railway backend and Vercel frontend
+
+The persistent Node/Python process belongs in the Docker backend. It must not be treated as a Vercel static asset or assumed to run unchanged inside a Vercel function. `railway.json` selects the repository's Dockerfile, one replica, `/readyz`, a 60-second startup healthcheck allowance, bounded failure restarts, no requested rollout overlap and a 10-second termination grace. Do not override the image entrypoint/CMD: tini and the Node supervisor handle worker cleanup. Railway supplies `PORT`; the service listens on it at `0.0.0.0`. No database or volume is required. Per-instance admission/rate budgets require one instance; adding replicas changes the effective aggregate budget.
+
+After creating a Railway service from this repository, obtain its actual stable HTTPS backend origin and verify `/readyz` and the real fixture smoke. Supply that origin as **`BACKEND_ORIGIN` on Vercel**. The checked-in `vercel.ts` refuses an absent or noncanonical HTTPS origin, builds only the four allowed browser assets into `dist/`, and rewrites `/api/:path*`, `/healthz` and `/readyz` to that exact configured backend. `scripts/build-frontend.mjs` does not package Python, Node service code, tests, docs or credentials into the frontend. No invented backend URL or speculative rewrite destination is committed.
+
+Set **`PUBLIC_ORIGIN` on Railway** to the actual stable HTTPS Vercel frontend origin. This optional startup setting is one exact, canonical HTTPS DNS origin; an explicit nondefault port is permitted. No trailing slash, path, query, fragment, username/password, wildcard, list, whitespace or ambiguous hostname is accepted. Invalid values stop startup before opening a listener and emit a fixed configuration error without echoing the supplied value. With the setting absent, only direct same-origin browser requests are accepted.
+
+The backend compares a supplied `Origin` against the exact configured public origin or the direct request's `Host` authority. It never grants origin permission from `Forwarded`/`X-Forwarded-*`. `Sec-Fetch-Site: cross-site` is accepted only when `Origin` exactly equals `PUBLIC_ORIGIN`; missing or unrelated origins still fail. This exception supports the explicitly configured frontend/proxy boundary. No wildcard CORS or preflight API is added: the browser continues to call its own Vercel `/api/run` URL and Vercel performs the server-side rewrite. Direct cross-origin browser fetches to Railway are not the deployment design.
+
+Preview domains are intentionally not wildcard-allowed. A different preview frontend needs its exact origin configured on a separate backend or an explicit operator change; it does not automatically inherit production origin permission. Use the stable production frontend origin for the production backend.
+
+Before declaring the split deployment complete, verify the actual Vercel root/assets, proxied readiness, a failing paired race with a real minimized witness, a clean sequential control, and explicit rejection of a nonallowed origin at the backend. Preserve the tested Git commit and built image digest. Configure any resource/spend limits and platform credentials through the provider; the source files neither provision a service nor bypass account approval.
 
 ## API contract
 
@@ -79,14 +93,16 @@ docker run --rm --read-only --cap-drop=ALL --security-opt=no-new-privileges \
 
 The version-tagged official Node 24.22.1 Bookworm slim base installs distribution Python and tini, copies only application assets/code, runs as user `node`, and healthchecks `/readyz`. The image writes no application files and supports a read-only root filesystem. Build-time distribution packages receive the repository's current versions, so the Dockerfile alone is not a bit-for-bit build lock; record the successfully built image digest for deployment/rollback.
 
-`.github/workflows/service.yml` runs all tests, builds Docker, checks non-root UID, starts with read-only filesystem/capabilities dropped, waits for readiness, executes a real paired/minimized fixture smoke and checks graceful container exit. The earlier Python-version fixture CI remains intact. Docker is absent locally, so **container build/run and hosted service CI remain release gates**, not completed evidence. Run them before deploying an image; then verify the host's public readiness/API/UI and retain the image digest and host configuration. This milestone does not create hosting, domains, credentials or a public deployment.
+`.github/workflows/service.yml` runs all tests, builds Docker, checks non-root UID, starts with read-only filesystem/capabilities dropped, waits for readiness, executes a real paired/minimized fixture smoke and checks graceful container exit. The earlier Python-version fixture CI remains intact. Docker is absent locally, so each revision's hosted container build/run remains a release gate; the prior source revision passed this gate. Verify the new head's workflows before deploying, then verify the actual public readiness/API/UI and retain the image digest and host configuration. These files do not create hosting, domains, credentials or a public deployment.
 
 ## Local evidence and design references
 
-Local checks pass: 23 original engine/evidence tests, 20 HTTP/supervision tests, 7 frontend helper tests. HTTP tests include genuine paired fixture runs, noise minimization, clean controls, malformed/duplicate input, byte/UTF-8 limits, path and symlink isolation, global rate/busy controls, upload/absolute deadlines, subprocess isolation, real stubborn worker cancellation, loopback socket closure, inherited/closed descendant pipes, safe failures and production entrypoint preview flags/SIGTERM. An independent reviewer reproduced the process-group bug, verified the repair and reran the suites.
+Local checks pass: 23 original engine/evidence tests, 23 HTTP/supervision tests, 14 frontend helper/appearance tests. HTTP tests include genuine paired fixture runs, noise minimization, clean controls, malformed/duplicate input, byte/UTF-8 limits, path and symlink isolation, global rate/busy controls, upload/absolute deadlines, subprocess isolation, real stubborn worker cancellation, loopback socket closure, inherited/closed descendant pipes, safe failures, production entrypoint preview flags/SIGTERM, canonical public-origin configuration, forwarded-header negative controls and invalid-origin startup refusal. An independent reviewer reproduced the process-group bug, verified the repair and reran the suites.
 
 - [Node HTTP server timeouts and connection lifecycle](https://nodejs.org/download/release/latest-v24.x/docs/api/http.html)
 - [Node child process groups and supervision](https://nodejs.org/api/child_process.html)
 - [Dockerfile USER and HEALTHCHECK](https://docs.docker.com/reference/dockerfile/)
+- [Railway configuration schema and reference](https://docs.railway.com/config-as-code/reference)
+- [Railway deployment healthchecks and injected PORT](https://docs.railway.com/deployments/healthchecks)
 
 The server uses Node's maintained HTTP implementation rather than Python's development HTTP server as the public listener. Python's `ThreadingHTTPServer` remains internal to each bounded, ephemeral loopback-only fixture, where its observations are the behavior this application demonstrates.
