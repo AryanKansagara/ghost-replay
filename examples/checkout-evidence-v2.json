@@ -1,0 +1,129 @@
+{
+  "schema_version": 2,
+  "fixture": {
+    "kind": "checkout-v1",
+    "stock": 1,
+    "provenance": "fixture",
+    "source": "operator-supplied initial inventory"
+  },
+  "schedule": {
+    "steps": [
+      "noise:open-catalog",
+      "A:read",
+      "B:read",
+      "noise:view-help",
+      "A:commit",
+      "B:commit"
+    ],
+    "provenance": "hypothesis",
+    "source": "operator-controlled interleaving"
+  },
+  "source": {
+    "algorithm": "sha256",
+    "files": {
+      "ghost_replay/core.py": "238a5057e6ddc748366c7460934f974a8c4cb2b9f46d6be7ba32c5a5fbae21c6"
+    },
+    "provenance": "derived"
+  },
+  "evidence": {
+    "capture_id": "9a851cce9c2a4b73adeb873081f12b52",
+    "provenance": "observed",
+    "source": "controlled-loopback-http",
+    "environment": {
+      "python": "3.12.14",
+      "implementation": "CPython",
+      "system": "Linux"
+    },
+    "run": {
+      "schema_version": 1,
+      "experiment_id": "f14af70bef9be238",
+      "fixture": {
+        "stock": 1,
+        "provenance": "fixture"
+      },
+      "mode": "buggy",
+      "schedule": {
+        "steps": [
+          "noise:open-catalog",
+          "A:read",
+          "B:read",
+          "noise:view-help",
+          "A:commit",
+          "B:commit"
+        ],
+        "provenance": "hypothesis",
+        "source": "operator-controlled schedule"
+      },
+      "transport": "real loopback HTTP",
+      "events": [
+        {
+          "sequence": 0,
+          "operation": "noise:open-catalog",
+          "provenance": "observed",
+          "source": "local-http-checkout",
+          "effect": "none"
+        },
+        {
+          "sequence": 1,
+          "operation": "A:read",
+          "provenance": "observed",
+          "source": "local-http-checkout",
+          "inventory": 1
+        },
+        {
+          "sequence": 2,
+          "operation": "B:read",
+          "provenance": "observed",
+          "source": "local-http-checkout",
+          "inventory": 1
+        },
+        {
+          "sequence": 3,
+          "operation": "noise:view-help",
+          "provenance": "observed",
+          "source": "local-http-checkout",
+          "effect": "none"
+        },
+        {
+          "sequence": 4,
+          "operation": "A:commit",
+          "provenance": "observed",
+          "source": "local-http-checkout",
+          "accepted": true,
+          "inventory_before": 1,
+          "inventory_after": 0
+        },
+        {
+          "sequence": 5,
+          "operation": "B:commit",
+          "provenance": "observed",
+          "source": "local-http-checkout",
+          "accepted": true,
+          "inventory_before": 0,
+          "inventory_after": -1
+        }
+      ],
+      "responses": {
+        "A": {
+          "accepted": true,
+          "inventory_before": 1,
+          "inventory_after": 0
+        },
+        "B": {
+          "accepted": true,
+          "inventory_before": 0,
+          "inventory_after": -1
+        }
+      },
+      "result": {
+        "provenance": "derived",
+        "accepted": 2,
+        "final_inventory": -1,
+        "invariant_violated": true,
+        "complete": true
+      }
+    }
+  },
+  "config_sha256": "4ac7452273152ecee90ba9fc43d395fba64d4f14930343414190db93a7fb0829",
+  "content_sha256": "d6ae76faa77d292c62cf22489ba0dcce165f2fb814623b841626140e8a51fb4a"
+}
