@@ -4,7 +4,7 @@ A small executable incident laboratory: reproduce a checkout race over real loca
 
 This is a bounded first prototype inspired by Sentry's debugging workflows. It is independent of Sentry and has **no live Sentry integration**. It does not replay arbitrary production applications.
 
-**Current milestone (2026-10-31):** the existing HTTP experiment now has a strict v2 evidence envelope, source/configuration/content checksums, provenance, validated import/export, and explicit rejection of incomplete or inconsistent inputs. There are 22 passing local tests. Browser capture and live Sentry import remain future work.
+**Current milestone (2026-10-31):** the existing HTTP experiment now has a strict v2 evidence envelope, source/configuration/content checksums, provenance, validated import/export, and explicit rejection of incomplete or inconsistent inputs. There are 23 passing local tests. Browser capture and live Sentry import remain future work.
 
 ## Run
 
