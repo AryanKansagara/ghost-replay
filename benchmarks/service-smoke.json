@@ -1,0 +1,12 @@
+{
+  "smoke": "passed",
+  "transport": "real loopback HTTP",
+  "buggyViolation": true,
+  "fixedViolation": false,
+  "minimizedSteps": 4,
+  "validation": "local npm dev preview flags + real HTTP smoke",
+  "host": "0.0.0.0",
+  "runtime": "Node24.22.1/Python3.12.14",
+  "docker_tested": false,
+  "public_deployment": false
+}
