@@ -1,0 +1,33 @@
+name: Same-origin service and container
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  service:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.22.1'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm test
+      - name: Build container
+        run: docker build -t ghost-replay:ci .
+      - name: Non-root container health and actual fixture smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run -d --name ghost-replay-ci --read-only --cap-drop=ALL --security-opt=no-new-privileges -p 127.0.0.1:3000:3000 ghost-replay:ci
+          trap 'docker logs ghost-replay-ci; docker rm -f ghost-replay-ci' EXIT
+          test "$(docker exec ghost-replay-ci id -u)" != 0
+          for attempt in {1..30}; do
+            if docker exec ghost-replay-ci node service/healthcheck.mjs; then break; fi
+            sleep 1
+          done
+          docker exec ghost-replay-ci node service/healthcheck.mjs
+          node service/smoke.mjs
+          docker stop --time 3 ghost-replay-ci
+          test "$(docker inspect --format='{{.State.ExitCode}}' ghost-replay-ci)" = 0
