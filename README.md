@@ -4,7 +4,21 @@ A small executable incident laboratory: reproduce a checkout race over real loca
 
 This is a bounded first prototype inspired by Sentry's debugging workflows. It is independent of Sentry and has **no live Sentry integration**. It does not replay arbitrary production applications.
 
-**Current milestone (2026-10-31):** the existing HTTP experiment now has a strict v2 evidence envelope, source/configuration/content checksums, provenance, validated import/export, and explicit rejection of incomplete or inconsistent inputs. There are 23 passing local tests. Browser capture and live Sentry import remain future work.
+**Current milestone (2026-10-31):** the fixture and v2 evidence envelope now have a same-origin interactive application and bounded HTTP service. The UI runs the actual buggy/fixed Python HTTP fixture and its actual minimizer through a disposable worker. Local checks pass: 23 original Python tests, 20 HTTP/service tests, and 7 frontend helper tests. Browser capture and live Sentry import remain future work.
+
+## Interactive application
+
+Node 24.x and Python 3.10+ on a POSIX host; no npm/pip runtime packages or credentials are needed.
+
+```sh
+npm run dev
+# Open http://localhost:3000
+npm test
+```
+
+`npm start` is the production process entrypoint. It binds `0.0.0.0` and reads `PORT` (default 3000). Preview tooling can use `npm run dev -- --host 0.0.0.0 --port 4173 --strictPort`; ports never silently fall back. `/healthz` is liveness and `/readyz` requires complete static assets plus an actual paired fixture self-check. The service keeps no run database and accepts only the included checkout operations; it cannot replay submitted applications or arbitrary URLs.
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for the API, limits, cancellation/cleanup, non-root container, CI smoke and remaining release gates. Container build and remote service CI are configured but have not run in this local environment; no public application deployment is claimed. [web/README.md](web/README.md) describes the UI.
 
 ## Run
 
@@ -51,4 +65,4 @@ Only allowlisted operations execute; bundle text is never evaluated as code or s
 
 The minimizer removes steps while preserving failure and valid protocol structure. It can remove `noise:` actions, which represent irrelevant test actions with no effect. It cannot delete required reads/commits, infer unknown production inputs, or minimize arbitrary application logic. Its result is explicitly one-step-minimal among valid schedules, not a globally minimal cause. All six read/commit schedules are enumerated by `verify`; that proves only the stated bounded fixture behavior. Scheduling hooks add instrumentation and are not transparent production record/replay.
 
-No UI, browser action recorder, rrweb reader, database, cloud worker, patch generator, or deployment is included yet. See [RESEARCH.md](RESEARCH.md) for verified overlap and the next useful scope.
+The included UI and service run only this authored fixture. Browser action recording, rrweb import, a database, distributed cloud workers, patch generation and live Sentry integration remain unimplemented. See [RESEARCH.md](RESEARCH.md) for verified overlap and the next useful scope.

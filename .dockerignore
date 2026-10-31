@@ -1,0 +1,11 @@
+.git
+.github
+**/__pycache__
+**/*.pyc
+tests
+service-tests
+benchmarks
+examples
+artifacts
+.env*
+node_modules
