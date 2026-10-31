@@ -6,7 +6,7 @@ import { mkdtemp, writeFile, rm, readFile, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
-import { createService, LIMITS } from '../service/server.mjs';
+import { createService, LIMITS, parsePublicOrigin } from '../service/server.mjs';
 import { WorkerRunner, APP_ROOT } from '../service/runner.mjs';
 import { parseRequest } from '../service/schema.mjs';
 
@@ -94,6 +94,32 @@ test('same-origin policy, media type, compression and methods', async t => {
   assert.equal((await request(port, { headers: { Origin: `http://127.0.0.1:${port}` } })).status, 200);
   const wrong = await request(port, { method: 'GET' }); assert.equal(wrong.status, 405); assert.equal(wrong.headers.allow, 'POST');
   assert.equal((await request(port, { method: 'OPTIONS' })).headers['access-control-allow-origin'], undefined);
+});
+test('PUBLIC_ORIGIN configuration accepts one canonical HTTPS DNS origin only', () => {
+  assert.equal(parsePublicOrigin(undefined), null);
+  assert.equal(parsePublicOrigin('https://portfolio.vercel.app'), 'https://portfolio.vercel.app');
+  assert.equal(parsePublicOrigin('https://preview.example:8443'), 'https://preview.example:8443');
+  for (const value of ['', null, true, [], {}, 7, '*', 'http://portfolio.vercel.app', 'https://*.vercel.app',
+    'https://portfolio.vercel.app/', 'https://portfolio.vercel.app/path', 'https://portfolio.vercel.app?x=1',
+    'https://portfolio.vercel.app#x', 'https://user:password@portfolio.vercel.app',
+    'https://portfolio.vercel.app https://evil.example', ' https://portfolio.vercel.app',
+    'https://PORTFOLIO.vercel.app', 'https://portfolio.vercel.app:443', 'https://a..vercel.app',
+    'https://bad_host.vercel.app', 'https://portfolio.vercel.app.', 'https://-bad.vercel.app']) {
+    assert.throws(() => createService({ publicOrigin: value }), /PUBLIC_ORIGIN/);
+  }
+});
+test('exact configured origin is allowed through a proxy without trusting forwarded headers', async t => {
+  const origin = 'https://portfolio.vercel.app'; const { port } = await setup(t, { publicOrigin: origin });
+  const allowed = await request(port, { headers: { Origin: origin, 'Sec-Fetch-Site': 'cross-site' } });
+  assert.equal(allowed.status, 200); assert.equal(allowed.data.buggy.result.complete, true);
+  assert.equal(allowed.headers['access-control-allow-origin'], undefined);
+  for (const headers of [
+    { Origin: origin + '.evil.example', 'X-Forwarded-Host': 'portfolio.vercel.app' },
+    { Origin: origin + '/', 'X-Forwarded-Proto': 'https' },
+    { 'Sec-Fetch-Site': 'cross-site', 'X-Forwarded-Host': 'portfolio.vercel.app' },
+    { Origin: `http://127.0.0.1:${port}`, 'Sec-Fetch-Site': 'cross-site' },
+  ]) assert.equal((await request(port, { headers })).status, 403);
+  assert.equal((await request(port, { headers: { Origin: `http://127.0.0.1:${port}` } })).status, 200);
 });
 test('static allowlist blocks internal dotfile traversal and test sources', async t => {
   const { port } = await setup(t);
@@ -194,15 +220,24 @@ test('preview CLI flags override PORT and graceful SIGTERM closes the real entry
   const reservation = net.createServer(); await new Promise(resolve => reservation.listen(0, '127.0.0.1', resolve));
   const port = reservation.address().port; await new Promise(resolve => reservation.close(resolve));
   const child = spawn(process.execPath, ['service/main.mjs', '--host', '127.0.0.1', '--port', String(port), '--strictPort'], {
-    cwd: APP_ROOT, env: { ...process.env, PORT: '1' }, stdio: ['ignore', 'pipe', 'pipe'],
+    cwd: APP_ROOT, env: { ...process.env, PORT: '1', PUBLIC_ORIGIN: 'https://portfolio.vercel.app' }, stdio: ['ignore', 'pipe', 'pipe'],
   });
   let output = ''; child.stdout.on('data', chunk => { output += chunk; }); child.stderr.resume();
   t.after(() => { if (child.exitCode === null) child.kill('SIGKILL'); });
   await until(() => output.includes('"event":"listening"'), 5_000);
   const startup = JSON.parse(output.trim()); assert.equal(startup.port, port); assert.equal(startup.ready, true);
   const health = await request(port, { path: '/readyz', method: 'GET' }); assert.equal(health.status, 200);
+  assert.equal((await request(port, { headers: { Origin: 'https://portfolio.vercel.app', 'Sec-Fetch-Site': 'cross-site' } })).status, 200);
   const closed = new Promise(resolve => child.once('close', resolve)); child.kill('SIGTERM');
   assert.equal(await closed, 0); assert.equal(await refused(port), true);
+});
+test('invalid PUBLIC_ORIGIN stops the actual entrypoint before listening with a safe error', async () => {
+  for (const origin of ['*', 'http://portfolio.vercel.app', 'https://portfolio.vercel.app/path']) {
+    const child = spawn(process.execPath, ['service/main.mjs'], { cwd: APP_ROOT, env: { ...process.env, PUBLIC_ORIGIN: origin } });
+    let output = '', error = ''; child.stdout.on('data', chunk => { output += chunk; }); child.stderr.on('data', chunk => { error += chunk; });
+    assert.equal(await new Promise(resolve => child.once('close', resolve)), 1);
+    assert.equal(output, ''); assert.equal(error.trim(), '{"event":"startup_failed","code":"invalid_service_configuration"}');
+  }
 });
 test('worker leader exit cleans surviving descendants with inherited or closed pipes', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'ghost-descendant-test-'));
