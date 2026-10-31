@@ -14,6 +14,8 @@ jobs:
         with:
           python-version: '3.12'
       - run: npm test
+      - name: Build allowlisted static frontend
+        run: node scripts/build-frontend.mjs
       - name: Build container
         run: docker build -t ghost-replay:ci .
       - name: Non-root container health and actual fixture smoke
