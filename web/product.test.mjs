@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { assertionViews, newRequestId, parseHAR, prepareRequests, publicRequestURL, sanitizeBody, comparePreview, formatDuration } from './helpers.mjs';
+import { operationStatus, assertionViews, newRequestId, parseHAR, prepareRequests, publicRequestURL, sanitizeBody, comparePreview, formatDuration } from './helpers.mjs';
 const uuid='00000000-0000-4000-8000-000000000001';
 const entry=(url='https://example.com/health',method='GET',text='{"ok":true}')=>({request:{url,method,headers:[{name:'Authorization',value:'Bearer FORBIDDEN'},{name:'Cookie',value:'FORBIDDEN'}]},response:{status:200,headers:[{name:'Set-Cookie',value:'FORBIDDEN'}],content:{text}}});
 const har=entries=>JSON.stringify({log:{entries}});
@@ -96,4 +96,11 @@ test('unretained checks are distinct from no configured checks',()=>{
  assert.deepEqual(assertionViews({actual:null,assertions:[]},{assertions:{}}),[]);
  const views=assertionViews({actual:{status:200},assertions:[]},{assertions:{status:200}});
  assert.equal(views[0].state,'not_evaluated');assert.match(views[0].message,/No assertion outcome/);
+});
+
+test('saving configuration stays distinct from an actual replay and returns to idle',()=>{
+ const saving=operationStatus('save',2,true),running=operationStatus('replay',2,true);
+ assert.equal(saving.label,'Saving trace…');assert.equal(saving.caption,'SAVING TRACE');assert.equal(saving.running,false);assert.match(saving.description,/No replay requests are being sent/);
+ assert.equal(running.label,'Replaying…');assert.equal(running.running,true);assert.match(running.description,/live responses/);
+ assert.equal(operationStatus(null,2,true).label,'Replay 2 requests');assert.equal(operationStatus(null,1,true).label,'Replay 1 request');assert.equal(operationStatus(null,0,false).caption,'CONNECTING TO YOUR WORKSPACE');
 });
