@@ -1,4 +1,4 @@
-import { createThemeController, newRequestId, MAX_REQUESTS, parseHAR, prepareRequests, publicRequestURL, formatDuration, displayDate, assertionViews } from '/helpers.mjs';
+import { createThemeController, newRequestId, MAX_REQUESTS, parseHAR, prepareRequests, publicRequestURL, formatDuration, displayDate, assertionViews, operationStatus } from '/helpers.mjs';
 const $ = id => document.getElementById(id);
 const el = (tag, className, text) => { const node=document.createElement(tag); if(className)node.className=className; if(text!==undefined)node.textContent=text;return node; };
 const themeKey='ghost-replay-theme', workspaceKey='ghost-replay-workspace';
@@ -11,7 +11,7 @@ const themes=createThemeController({readPreference:()=>localStorage.getItem(them
 }});
 $('theme-toggle').addEventListener('click',()=>themes.toggle());$('theme-system').addEventListener('click',()=>themes.useSystem());colorPreference.addEventListener('change',()=>themes.systemChanged());
 window.addEventListener('storage',event=>{if(event.key===themeKey||event.key===null)themes.refresh();});
-const state={token:null,workspace:null,scenarios:[],runs:[],requests:[],selected:null,scenarioId:null,dirty:false,busy:false,connecting:false,connected:false,view:'studio',report:null,historyRun:null};
+const state={token:null,workspace:null,scenarios:[],runs:[],requests:[],selected:null,scenarioId:null,dirty:false,busy:false,operation:null,connecting:false,connected:false,view:'studio',report:null,historyRun:null};
 let storageAvailable=true,confirmResolve=null,importEpoch=0;
 function notify(message){$('notification-text').textContent=message;$('notification').hidden=false;}
 function showError(message,title='Something needs your attention'){ $('error-title').textContent=title;$('error-text').textContent=message;$('error-banner').hidden=false; }
@@ -58,11 +58,12 @@ function updateActions(){
   for(const button of document.querySelectorAll('.import-trigger,.new-trace-trigger'))button.disabled=state.busy;
   for(const id of ['trace-name','request-label','request-method','request-url','baseline-status','include-baseline-body','baseline-body','assert-status','assert-duration','assert-contains','clear-baseline','auth-enabled','auth-host','auth-header','auth-value'])$(id).disabled=state.busy;
   $('request-workbench').setAttribute('aria-busy',String(state.busy));
-  $('run-button').classList.toggle('running',state.busy);$('run-label').textContent=state.busy?'Replaying…':`Replay ${state.requests.length} ${state.requests.length===1?'request':'requests'}`;
-  $('run-caption').textContent=state.busy?'REPLAY IN PROGRESS':!state.connected?'CONNECTING TO YOUR WORKSPACE':'READY WHEN YOU ARE';
-  $('run-description').textContent=state.busy?'Waiting for live responses. Results are saved to your private workspace.':'Responses are measured live. Nothing is precomputed.';
+  const status=operationStatus(state.operation,state.requests.length,state.connected);
+  $('run-button').classList.toggle('running',status.running);$('run-label').textContent=status.label;
+  $('run-caption').textContent=status.caption;$('run-description').textContent=status.description;
+  $('save-trace').textContent=state.operation==='save'?'Saving trace…':'Save trace';
 }
-function setBusy(value){state.busy=value;updateActions();renderRequestList();}
+function setBusy(value,operation=null){state.busy=value;state.operation=value?operation:null;updateActions();renderRequestList();}
 function switchView(view){
   state.view=view;for(const name of ['studio','scenarios','history'])$(`${name}-view`).hidden=name!==view;
   for(const button of document.querySelectorAll('.nav-item')){button.classList.toggle('active',button.dataset.view===view);if(button.dataset.view===view)button.setAttribute('aria-current','page');else button.removeAttribute('aria-current');}
@@ -112,7 +113,7 @@ function updateRequest(){
 }
 async function saveTrace(){
   if(state.busy||!state.connected)return;hideError();let requests;try{requests=prepareRequests(state.requests);}catch(error){showError(error.message,'Check your trace before saving');return;}
-  setBusy(true);try{const response=await api('/api/scenarios',{method:'POST',body:{...(state.scenarioId?{id:state.scenarioId}:{}),name:$('trace-name').value.trim()||'Untitled trace',requests}});const scenario=response.scenario;if(!scenario?.id)throw new Error('The service did not confirm the saved trace.');state.scenarioId=scenario.id;state.dirty=false;$('draft-status').textContent='SAVED TO WORKSPACE';await refreshWorkspace();notify('Trace saved. It is available in Saved traces; no authorization credentials were included.');}catch(error){showError(error.message,'Trace could not be saved');}finally{setBusy(false);}
+  setBusy(true,'save');try{const response=await api('/api/scenarios',{method:'POST',body:{...(state.scenarioId?{id:state.scenarioId}:{}),name:$('trace-name').value.trim()||'Untitled trace',requests}});const scenario=response.scenario;if(!scenario?.id)throw new Error('The service did not confirm the saved trace.');state.scenarioId=scenario.id;state.dirty=false;$('draft-status').textContent='SAVED TO WORKSPACE';await refreshWorkspace();notify('Trace saved. It is available in Saved traces; no authorization credentials were included.');}catch(error){showError(error.message,'Trace could not be saved');}finally{setBusy(false);}
 }
 function loadingPanel(title,message){const panel=el('div','panel empty-state compact');panel.append(el('span','loading-ring'),el('h2','',title),el('p','',message));return panel;}
 async function runTrace(){
@@ -121,7 +122,7 @@ async function runTrace(){
     payload={name:$('trace-name').value.trim()||'Untitled trace',requests:prepareRequests(state.requests)};
     if($('auth-enabled').checked){const hostname=$('auth-host').value,value=$('auth-value').value;if(!hostname)throw new Error('Choose the exact hostname that should receive temporary authorization.');if(!value||value.length>2048||/[^\x20-\x7e]/.test(value))throw new Error('Authorization must be 1–2,048 printable ASCII characters.');payload.auth={hostname,header:$('auth-header').value,value};}
   }catch(error){showError(error.message,'Check your requests before replaying');return;}
-  setBusy(true);$('studio-results').replaceChildren(loadingPanel(`Replaying ${payload.requests.length} ${payload.requests.length===1?'request':'requests'}…`,'Sending real HTTPS requests and comparing captured responses. This can take up to 30 seconds.'));
+  setBusy(true,'replay');$('studio-results').replaceChildren(loadingPanel(`Replaying ${payload.requests.length} ${payload.requests.length===1?'request':'requests'}…`,'Sending real HTTPS requests and comparing captured responses. This can take up to 30 seconds.'));
   try{
     const response=await api('/api/runs',{method:'POST',body:payload});if(!response.run?.id||!Array.isArray(response.run.results))throw new Error('The service did not return a complete run record. Open Run history to check whether it was saved.');
     state.report=response.run;renderReport($('studio-results'),response.run);notify(`Replay complete. ${response.run.summary?.total??response.run.results.length} requests recorded in Run history.`);

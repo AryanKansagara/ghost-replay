@@ -256,3 +256,10 @@ export function assertionViews(result, request) {
   }
   return checks.map(check => ({ ...check, state: check.passed === true ? 'passed' : check.passed === false ? 'failed' : 'not_evaluated' }));
 }
+
+/** Saving configuration does not send replay requests to the target. */
+export function operationStatus(operation,count,connected) {
+  if(operation==='save')return {running:false,label:'Saving trace…',caption:'SAVING TRACE',description:'Saving request configuration to your private workspace. No replay requests are being sent.'};
+  if(operation==='replay')return {running:true,label:'Replaying…',caption:'REPLAY IN PROGRESS',description:'Waiting for live responses. Results are saved to your private workspace.'};
+  return {running:false,label:`Replay ${count} ${count===1?'request':'requests'}`,caption:connected?'READY WHEN YOU ARE':'CONNECTING TO YOUR WORKSPACE',description:'Responses are measured live. Nothing is precomputed.'};
+}
